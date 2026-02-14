@@ -13,6 +13,9 @@ describe('prompt_generation_service', () => {
     // Create mock context with generateRaw
     mockContext = {
       generateRaw: vi.fn(),
+      generateQuietPrompt: vi
+        .fn()
+        .mockRejectedValue(new Error('quiet disabled')),
       chat: [],
     } as unknown as SillyTavernContext;
 
@@ -322,6 +325,60 @@ REASONING: Second
       expect(result.status).toBe('error');
       expect(result.suggestions).toHaveLength(0);
       expect(result.errorType).toBe('llm-call-failed');
+    });
+
+    it('should fall back to generateRaw(messages) when generateRaw(string) fails', async () => {
+      const messageText = 'She walked through the forest under the moonlight.';
+      const llmResponse = `---PROMPT---
+TEXT: 1girl, forest, moonlight, highly detailed
+INSERT_AFTER: through the forest
+INSERT_BEFORE: under the moonlight
+REASONING: Key visual scene
+---END---`;
+
+      vi.mocked(mockContext.generateRaw).mockImplementation(async options => {
+        if (typeof options.prompt === 'string') {
+          throw new Error('502 Bad Gateway');
+        }
+        return llmResponse;
+      });
+
+      const result = await generatePromptsForMessage(
+        messageText,
+        mockContext,
+        mockSettings
+      );
+
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(vi.mocked(mockContext.generateRaw)).toHaveBeenCalledTimes(2);
+    });
+
+    it('should fall back to generateQuietPrompt when generateRaw fails', async () => {
+      const messageText = 'She walked through the forest under the moonlight.';
+      const llmResponse = `---PROMPT---
+TEXT: 1girl, forest, moonlight, highly detailed
+INSERT_AFTER: through the forest
+INSERT_BEFORE: under the moonlight
+REASONING: Key visual scene
+---END---`;
+
+      vi.mocked(mockContext.generateRaw).mockRejectedValue(
+        new Error('502 Bad Gateway')
+      );
+      vi.mocked(mockContext.generateQuietPrompt).mockResolvedValue(llmResponse);
+
+      const result = await generatePromptsForMessage(
+        messageText,
+        mockContext,
+        mockSettings
+      );
+
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(vi.mocked(mockContext.generateQuietPrompt)).toHaveBeenCalledTimes(
+        1
+      );
     });
 
     it('should return error status when generateRaw is not available', async () => {

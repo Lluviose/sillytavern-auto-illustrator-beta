@@ -24,6 +24,16 @@ export interface PromptGenerationResult {
   rawResponse?: string;
 }
 
+type LlmCallMethod =
+  | 'generateRaw(string)'
+  | 'generateRaw(messages)'
+  | 'generateQuietPrompt';
+
+function formatLlmCallError(method: LlmCallMethod, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `${method}: ${message}`;
+}
+
 /**
  * Builds user prompt with context from previous messages
  * Format: === CONTEXT === ... === CURRENT MESSAGE === ...
@@ -230,10 +240,57 @@ export async function generatePromptsForMessage(
   // Call LLM with generateRaw (no chat context)
   let llmResponse: string;
   try {
-    llmResponse = await context.generateRaw({
-      systemPrompt,
-      prompt: userPrompt,
-    });
+    const errors: string[] = [];
+
+    // Primary: generateRaw with string prompt
+    try {
+      llmResponse = await context.generateRaw({
+        systemPrompt,
+        prompt: userPrompt,
+      });
+      logger.info('Prompt generation LLM call succeeded', {
+        method: 'generateRaw(string)',
+      });
+    } catch (error) {
+      errors.push(formatLlmCallError('generateRaw(string)', error));
+
+      // Fallback: generateRaw with chat-style message array
+      // Some providers only support chat completions and may fail on raw string prompts.
+      const messages: Array<{role: string; content: string}> = [];
+      if (systemPrompt && systemPrompt.trim().length > 0) {
+        messages.push({role: 'system', content: systemPrompt});
+      }
+      messages.push({role: 'user', content: userPrompt});
+
+      try {
+        llmResponse = await context.generateRaw({
+          prompt: messages as unknown[],
+        });
+        logger.info('Prompt generation LLM call succeeded', {
+          method: 'generateRaw(messages)',
+        });
+      } catch (secondError) {
+        errors.push(formatLlmCallError('generateRaw(messages)', secondError));
+
+        // Last resort: generateQuietPrompt (chat pipeline, no message insertion)
+        if (typeof context.generateQuietPrompt === 'function') {
+          try {
+            const combined = `SYSTEM:\n${systemPrompt}\n\nUSER:\n${userPrompt}`;
+            llmResponse = await context.generateQuietPrompt({
+              quietPrompt: combined,
+            });
+            logger.info('Prompt generation LLM call succeeded', {
+              method: 'generateQuietPrompt',
+            });
+          } catch (thirdError) {
+            errors.push(formatLlmCallError('generateQuietPrompt', thirdError));
+            throw new Error(errors.join(' | '));
+          }
+        } else {
+          throw new Error(errors.join(' | '));
+        }
+      }
+    }
 
     logger.debug('LLM response received');
     logger.trace('Raw LLM response:', llmResponse);
