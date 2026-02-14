@@ -2359,3 +2359,17 @@ img[data-failed-placeholder='true']:hover {
   border-color: #ff6b6b;
   transform: scale(1.05);
 }
+
+/* Independent API mode per-message controls */
+.auto-illustrator-independent-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.auto-illustrator-independent-status {
+  font-size: 0.85em;
+  opacity: 0.8;
+}

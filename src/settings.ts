@@ -201,7 +201,7 @@ export function createSettingsUI(): string {
           <label for="${UI_ELEMENT_IDS.MIN_GENERATION_INTERVAL}">
             <span>${t('settings.minGenerationInterval')}</span>
             <small>${t('settings.minGenerationIntervalDesc')}</small>
-            <input id="${UI_ELEMENT_IDS.MIN_GENERATION_INTERVAL}" class="text_pole" type="number" min="${MIN_GENERATION_INTERVAL.MIN}" max="${MIN_GENERATION_INTERVAL.MAX}" step="${MIN_GENERATION_INTERVAL.STEP}" />
+            <input id="${UI_ELEMENT_IDS.MIN_GENERATION_INTERVAL}" class="text_pole" type="number" min="${MIN_GENERATION_INTERVAL.MIN / 1000}" max="${MIN_GENERATION_INTERVAL.MAX / 1000}" step="1" />
           </label>
 
           <label for="${UI_ELEMENT_IDS.PROMPT_PATTERNS}">

@@ -9,6 +9,21 @@ import type {PromptSuggestion} from '../prompt_insertion';
 
 const logger = createLogger('PromptGenService');
 
+export type PromptGenerationStatus = 'success' | 'no-prompts' | 'error';
+
+export type PromptGenerationErrorType =
+  | 'generateRaw-unavailable'
+  | 'llm-call-failed'
+  | 'invalid-format';
+
+export interface PromptGenerationResult {
+  status: PromptGenerationStatus;
+  suggestions: PromptSuggestion[];
+  errorType?: PromptGenerationErrorType;
+  errorMessage?: string;
+  rawResponse?: string;
+}
+
 /**
  * Builds user prompt with context from previous messages
  * Format: === CONTEXT === ... === CURRENT MESSAGE === ...
@@ -167,14 +182,19 @@ export async function generatePromptsForMessage(
   messageText: string,
   context: SillyTavernContext,
   settings: AutoIllustratorSettings
-): Promise<PromptSuggestion[]> {
+): Promise<PromptGenerationResult> {
   logger.info('Generating image prompts using separate LLM call');
   logger.debug(`Message length: ${messageText.length} characters`);
 
   // Check for LLM availability
   if (!context.generateRaw) {
     logger.error('generateRaw not available in context');
-    throw new Error('LLM generation not available');
+    return {
+      status: 'error',
+      suggestions: [],
+      errorType: 'generateRaw-unavailable',
+      errorMessage: 'LLM generation not available (generateRaw missing)',
+    };
   }
 
   // Build system prompt with all instructions from template
@@ -219,15 +239,37 @@ export async function generatePromptsForMessage(
     logger.trace('Raw LLM response:', llmResponse);
   } catch (error) {
     logger.error('LLM generation failed:', error);
-    return []; // Return empty array instead of throwing
+    return {
+      status: 'error',
+      suggestions: [],
+      errorType: 'llm-call-failed',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
   }
 
   // Parse response
   const suggestions = parsePromptSuggestions(llmResponse);
 
   if (suggestions.length === 0) {
-    logger.warn('LLM returned no valid suggestions');
-    return [];
+    const cleaned = llmResponse.trim();
+    const includesPromptDelimiter = cleaned.includes('---PROMPT---');
+    const includesEndDelimiter = cleaned.includes('---END---');
+
+    // If the LLM returned a well-formed "no prompts" response (just ---END---),
+    // treat it as a valid "no-prompts" outcome (no retries needed).
+    if (includesEndDelimiter && !includesPromptDelimiter) {
+      logger.info('LLM returned no prompts (---END--- without prompt blocks)');
+      return {status: 'no-prompts', suggestions: [], rawResponse: llmResponse};
+    }
+
+    logger.warn('LLM returned no valid suggestions (invalid format)');
+    return {
+      status: 'error',
+      suggestions: [],
+      errorType: 'invalid-format',
+      errorMessage: 'LLM response did not contain any valid prompt blocks',
+      rawResponse: llmResponse,
+    };
   }
 
   // Apply maxPromptsPerMessage limit
@@ -236,7 +278,11 @@ export async function generatePromptsForMessage(
     logger.info(
       `Limiting prompts from ${suggestions.length} to ${maxPrompts} (maxPromptsPerMessage)`
     );
-    return suggestions.slice(0, maxPrompts);
+    return {
+      status: 'success',
+      suggestions: suggestions.slice(0, maxPrompts),
+      rawResponse: llmResponse,
+    };
   }
 
   logger.info(
@@ -253,5 +299,5 @@ export async function generatePromptsForMessage(
     });
   });
 
-  return suggestions;
+  return {status: 'success', suggestions, rawResponse: llmResponse};
 }

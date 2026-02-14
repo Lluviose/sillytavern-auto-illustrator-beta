@@ -10,6 +10,7 @@ import {loadSettings} from './settings';
 import {clearProgressWidgetState} from './progress_widget';
 import {getStreamingPreviewWidget} from './index';
 import {addImageClickHandlers} from './manual_generation';
+import {renderIndependentApiControls} from './independent_api_controls';
 
 // Types are in globals.d.ts (no need to import)
 
@@ -112,6 +113,7 @@ export function executeChatChangeOperations(): void {
     setTimeout(() => {
       logger.trace('Re-adding image click handlers');
       addImageClickHandlers(newSettings);
+      renderIndependentApiControls(newSettings);
     }, 100);
 
     logger.debug('Chat change operations completed successfully');

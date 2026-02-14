@@ -10,11 +10,13 @@
 
 import {sessionManager} from './session_manager';
 import {createLogger} from './logger';
-import {generatePromptsForMessage} from './services/prompt_generation_service';
-import {insertPromptTagsWithContext} from './prompt_insertion';
+import {
+  ensureIndependentApiPromptsAndGenerateImages,
+  cancelAllIndependentPromptRetries,
+} from './independent_api_prompt_generation';
 import {isIndependentApiMode} from './mode_utils';
 import {reconcileMessage} from './reconciliation';
-import {getMetadata, saveMetadata} from './metadata';
+import {getMetadata} from './metadata';
 import {renderMessageUpdate} from './utils/message_renderer';
 import {attachRegenerationHandlers} from './manual_generation';
 
@@ -180,78 +182,25 @@ export async function handleMessageReceived(
 
     // Check if LLM-based prompt generation is enabled
     if (isIndependentApiMode(settings.promptGenerationMode)) {
-      logger.info('LLM-based prompt generation enabled, generating prompts...');
+      logger.info(
+        'Independent API prompt generation enabled; ensuring prompts (with retries if needed)...'
+      );
 
       try {
-        // Step 1: Call LLM to generate prompts
-        const prompts = await generatePromptsForMessage(
-          message.mes,
+        // This handles prompt generation + retries + starting the image generation session.
+        await ensureIndependentApiPromptsAndGenerateImages(
+          messageId,
           context,
           settings
         );
-
-        if (prompts.length === 0) {
-          logger.info('LLM returned no prompts, skipping image generation');
-          return;
-        }
-
-        logger.info(`LLM generated ${prompts.length} prompts`);
-
-        // Step 2: Insert prompt tags into message using context matching
-        const tagTemplate = settings.promptDetectionPatterns[0];
-        const insertionResult = insertPromptTagsWithContext(
-          message.mes,
-          prompts,
-          tagTemplate
-        );
-
-        // Step 2b: Fallback for failed suggestions - append at end
-        let finalText = insertionResult.updatedText;
-        let totalInserted = insertionResult.insertedCount;
-
-        if (insertionResult.failedSuggestions.length > 0) {
-          logger.warn(
-            `Failed to insert ${insertionResult.failedSuggestions.length} prompts (context not found), appending at end`
-          );
-
-          // Append failed prompts at the end of the message
-          const promptTagTemplate = tagTemplate.includes('{PROMPT}')
-            ? tagTemplate
-            : '<!--img-prompt="{PROMPT}"-->';
-
-          for (const failed of insertionResult.failedSuggestions) {
-            const promptTag = promptTagTemplate.replace(
-              '{PROMPT}',
-              failed.text
-            );
-            finalText += ` ${promptTag}`;
-            totalInserted++;
-            logger.debug(
-              `Appended failed prompt at end: "${failed.text.substring(0, 50)}..."`
-            );
-          }
-        }
-
-        if (totalInserted === 0) {
-          logger.warn('No prompts generated or inserted');
-          toastr.warning(
-            'Failed to generate image prompts (LLM returned no valid prompts)',
-            'Warning'
-          );
-          return;
-        }
-
-        // Step 3: Save updated message with prompt tags
-        message.mes = finalText;
-        await saveMetadata();
-        logger.info(
-          `Inserted ${totalInserted} prompt tags into message (${insertionResult.failedSuggestions.length} appended at end)`
-        );
       } catch (error) {
-        logger.error('LLM prompt generation failed:', error);
-        toastr.warning('Failed to generate image prompts', 'Warning');
-        return;
+        logger.error(
+          `Independent API prompt generation workflow failed for message ${messageId}:`,
+          error
+        );
       }
+
+      return;
     }
 
     // Process message with prompts (works for both regex and LLM modes)
@@ -519,6 +468,9 @@ export function handleChatChanged(): void {
 
   // Cancel any pending delayed reconciliations
   cancelAllDelayedReconciliations();
+
+  // Cancel any pending independent-API prompt retries
+  cancelAllIndependentPromptRetries();
 
   const activeSessions = sessionManager.getAllSessions();
 

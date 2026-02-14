@@ -78,7 +78,7 @@ export const MANUAL_GENERATION_MODE = {
 export const MIN_GENERATION_INTERVAL = {
   DEFAULT: 0,
   MIN: 0,
-  MAX: 10000,
+  MAX: 60000,
   STEP: 100,
 } as const;
 

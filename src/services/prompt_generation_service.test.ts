@@ -13,11 +13,15 @@ describe('prompt_generation_service', () => {
     // Create mock context with generateRaw
     mockContext = {
       generateRaw: vi.fn(),
+      chat: [],
     } as unknown as SillyTavernContext;
 
     // Create mock settings
     mockSettings = {
       maxPromptsPerMessage: 5,
+      contextMessageCount: 5,
+      llmFrequencyGuidelines: 'test frequency',
+      llmPromptWritingGuidelines: 'test writing',
       promptGenerationMode: 'llm-post',
     } as AutoIllustratorSettings;
   });
@@ -40,11 +44,14 @@ REASONING: Key visual scene
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('1girl, forest, moonlight, highly detailed');
-      expect(result[0].insertAfter).toBe('through the forest');
-      expect(result[0].insertBefore).toBe('under the moonlight');
-      expect(result[0].reasoning).toBe('Key visual scene');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe(
+        '1girl, forest, moonlight, highly detailed'
+      );
+      expect(result.suggestions[0].insertAfter).toBe('through the forest');
+      expect(result.suggestions[0].insertBefore).toBe('under the moonlight');
+      expect(result.suggestions[0].reasoning).toBe('Key visual scene');
     });
 
     it('should parse valid plain text response with multiple prompts', async () => {
@@ -69,9 +76,10 @@ REASONING: Second moment
         mockSettings
       );
 
-      expect(result).toHaveLength(2);
-      expect(result[0].text).toBe('first scene');
-      expect(result[1].text).toBe('second scene');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(2);
+      expect(result.suggestions[0].text).toBe('first scene');
+      expect(result.suggestions[1].text).toBe('second scene');
     });
 
     it('should handle response with explanatory text before/after', async () => {
@@ -93,11 +101,12 @@ Hope this helps!`;
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('test prompt');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('test prompt');
     });
 
-    it('should return empty array when LLM returns no prompts', async () => {
+    it('should return no-prompts status when LLM returns no prompts', async () => {
       const messageText = 'No visual content here.';
       const llmResponse = '---END---';
 
@@ -109,10 +118,11 @@ Hope this helps!`;
         mockSettings
       );
 
-      expect(result).toHaveLength(0);
+      expect(result.status).toBe('no-prompts');
+      expect(result.suggestions).toHaveLength(0);
     });
 
-    it('should return empty array on malformed response', async () => {
+    it('should return error status on malformed response', async () => {
       const messageText = 'Test message.';
       const llmResponse = 'This is not a valid format at all';
 
@@ -124,10 +134,12 @@ Hope this helps!`;
         mockSettings
       );
 
-      expect(result).toHaveLength(0);
+      expect(result.status).toBe('error');
+      expect(result.suggestions).toHaveLength(0);
+      expect(result.errorType).toBe('invalid-format');
     });
 
-    it('should return empty array when response missing prompts', async () => {
+    it('should return no-prompts status when response has ---END--- but no prompts', async () => {
       const messageText = 'Test message.';
       const llmResponse = `Some text but no prompts
 ---END---`;
@@ -140,7 +152,8 @@ Hope this helps!`;
         mockSettings
       );
 
-      expect(result).toHaveLength(0);
+      expect(result.status).toBe('no-prompts');
+      expect(result.suggestions).toHaveLength(0);
     });
 
     it('should skip prompts with missing required fields', async () => {
@@ -169,9 +182,10 @@ REASONING: Valid too
         mockSettings
       );
 
-      expect(result).toHaveLength(2);
-      expect(result[0].text).toBe('valid prompt');
-      expect(result[1].text).toBe('another valid');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(2);
+      expect(result.suggestions[0].text).toBe('valid prompt');
+      expect(result.suggestions[1].text).toBe('another valid');
     });
 
     it('should skip prompts with empty fields', async () => {
@@ -199,8 +213,9 @@ REASONING: Missing INSERT_BEFORE field
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('valid prompt');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('valid prompt');
     });
 
     it('should respect maxPromptsPerMessage limit', async () => {
@@ -251,8 +266,9 @@ REASONING: Seventh (should be cut off)
         mockSettings
       );
 
-      expect(result).toHaveLength(5);
-      expect(result.map(p => p.text)).toEqual([
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(5);
+      expect(result.suggestions.map(p => p.text)).toEqual([
         'prompt1',
         'prompt2',
         'prompt3',
@@ -285,11 +301,12 @@ REASONING: Second
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('prompt1');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('prompt1');
     });
 
-    it('should return empty array when generateRaw throws error', async () => {
+    it('should return error status when generateRaw throws error', async () => {
       const messageText = 'Test message.';
 
       vi.mocked(mockContext.generateRaw).mockRejectedValue(
@@ -302,20 +319,23 @@ REASONING: Second
         mockSettings
       );
 
-      expect(result).toHaveLength(0);
+      expect(result.status).toBe('error');
+      expect(result.suggestions).toHaveLength(0);
+      expect(result.errorType).toBe('llm-call-failed');
     });
 
-    it('should throw error when generateRaw is not available', async () => {
+    it('should return error status when generateRaw is not available', async () => {
       const messageText = 'Test message.';
       const contextWithoutGenerateRaw = {} as SillyTavernContext;
 
-      await expect(
-        generatePromptsForMessage(
-          messageText,
-          contextWithoutGenerateRaw,
-          mockSettings
-        )
-      ).rejects.toThrow('LLM generation not available');
+      const result = await generatePromptsForMessage(
+        messageText,
+        contextWithoutGenerateRaw,
+        mockSettings
+      );
+
+      expect(result.status).toBe('error');
+      expect(result.errorType).toBe('generateRaw-unavailable');
     });
 
     it('should trim whitespace from prompt fields', async () => {
@@ -335,10 +355,11 @@ REASONING:   reason
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('prompt with spaces');
-      expect(result[0].insertAfter).toBe('before');
-      expect(result[0].insertBefore).toBe('after');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('prompt with spaces');
+      expect(result.suggestions[0].insertAfter).toBe('before');
+      expect(result.suggestions[0].insertBefore).toBe('after');
     });
 
     it('should handle prompts with special characters', async () => {
@@ -358,17 +379,20 @@ REASONING: Test special characters
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('prompt with "quotes" and $pecial chars');
-      expect(result[0].insertAfter).toBe('message with "quotes"');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe(
+        'prompt with "quotes" and $pecial chars'
+      );
+      expect(result.suggestions[0].insertAfter).toBe('message with "quotes"');
     });
 
     it('should handle Unicode characters in prompts', async () => {
       const messageText = '她走进花园。玫瑰盛开着。';
       const llmResponse = `---PROMPT---
-TEXT: 1个女孩，花园，详细
+TEXT: 1个女孩，花园，细节
 INSERT_AFTER: 走进花园。
-INSERT_BEFORE: 玫瑰盛开
+INSERT_BEFORE: 玫瑰盛开着
 REASONING: 中文测试
 ---END---`;
 
@@ -380,10 +404,11 @@ REASONING: 中文测试
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('1个女孩，花园，详细');
-      expect(result[0].insertAfter).toBe('走进花园。');
-      expect(result[0].insertBefore).toBe('玫瑰盛开');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('1个女孩，花园，细节');
+      expect(result.suggestions[0].insertAfter).toBe('走进花园。');
+      expect(result.suggestions[0].insertBefore).toBe('玫瑰盛开着');
     });
 
     it('should handle reasoning field being optional', async () => {
@@ -402,9 +427,10 @@ INSERT_BEFORE: message
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('prompt without reasoning');
-      expect(result[0].reasoning).toBeUndefined();
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('prompt without reasoning');
+      expect(result.suggestions[0].reasoning).toBeUndefined();
     });
 
     it('should handle markdown code blocks', async () => {
@@ -426,8 +452,9 @@ REASONING: Test
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('test prompt');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('test prompt');
     });
 
     it('should handle newlines in field values', async () => {
@@ -448,11 +475,12 @@ REASONING: Handles newlines naturally
         mockSettings
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].text).toBe('test prompt');
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.suggestions[0].text).toBe('test prompt');
       // The regex captures only the first line for INSERT_AFTER/INSERT_BEFORE
-      expect(result[0].insertAfter).toBe('Test');
-      expect(result[0].insertBefore).toBe('message with newlines');
+      expect(result.suggestions[0].insertAfter).toBe('Test');
+      expect(result.suggestions[0].insertBefore).toBe('message with newlines');
     });
   });
 });

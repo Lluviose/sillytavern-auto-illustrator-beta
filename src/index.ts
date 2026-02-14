@@ -59,6 +59,7 @@ import {StreamingPreviewWidget} from './streaming_preview_widget';
 import {isIndependentApiMode} from './mode_utils';
 import {initializeChatChangedHandler} from './chat_changed_handler';
 import {initializeChatChangeOperations} from './chat_change_operations';
+import {renderIndependentApiControls} from './independent_api_controls';
 
 const logger = createLogger('Main');
 
@@ -183,7 +184,7 @@ function updateUI(): void {
     maxConcurrentInput.value = settings.maxConcurrentGenerations.toString();
   if (minGenerationIntervalInput)
     minGenerationIntervalInput.value =
-      settings.minGenerationInterval.toString();
+      (settings.minGenerationInterval / 1000).toString();
   if (logLevelSelect) logLevelSelect.value = settings.logLevel;
   if (promptPatternsTextarea)
     promptPatternsTextarea.value = settings.promptDetectionPatterns.join('\n');
@@ -581,29 +582,39 @@ function handleSettingsChange(): void {
   }
 
   if (minGenerationIntervalInput) {
-    const originalValue = parseInt(minGenerationIntervalInput.value);
-    const clampedValue = clampValue(
-      originalValue,
-      MIN_GENERATION_INTERVAL.MIN,
-      MIN_GENERATION_INTERVAL.MAX,
-      MIN_GENERATION_INTERVAL.STEP
-    );
-    settings.minGenerationInterval = clampedValue;
-    // Update UI to show validated value
-    minGenerationIntervalInput.value = clampedValue.toString();
-
-    // Show toast if value was clamped
-    if (clampedValue !== originalValue) {
-      toastr.warning(
-        t('toast.valueAdjusted', {
-          original: originalValue,
-          clamped: clampedValue,
-          min: MIN_GENERATION_INTERVAL.MIN,
-          max: MIN_GENERATION_INTERVAL.MAX,
-          step: MIN_GENERATION_INTERVAL.STEP,
-        }),
-        t('extensionName')
+    const originalValueSeconds = parseFloat(minGenerationIntervalInput.value);
+    if (!Number.isFinite(originalValueSeconds)) {
+      minGenerationIntervalInput.value = (
+        settings.minGenerationInterval / 1000
+      ).toString();
+    } else {
+      const minSeconds = MIN_GENERATION_INTERVAL.MIN / 1000;
+      const maxSeconds = MIN_GENERATION_INTERVAL.MAX / 1000;
+      const stepSeconds = 1;
+      const clampedValueSeconds = clampValue(
+        originalValueSeconds,
+        minSeconds,
+        maxSeconds,
+        stepSeconds
       );
+      const clampedValueMs = Math.round(clampedValueSeconds * 1000);
+      settings.minGenerationInterval = clampedValueMs;
+      // Update UI to show validated value
+      minGenerationIntervalInput.value = clampedValueSeconds.toString();
+
+      // Show toast if value was clamped
+      if (clampedValueSeconds !== originalValueSeconds) {
+        toastr.warning(
+          t('toast.valueAdjusted', {
+            original: originalValueSeconds,
+            clamped: clampedValueSeconds,
+            min: minSeconds,
+            max: maxSeconds,
+            step: stepSeconds,
+          }),
+          t('extensionName')
+        );
+      }
     }
   }
   settings.logLevel =
@@ -1268,6 +1279,7 @@ function registerEventHandlers(): void {
     // Add image click handlers after message is received
     setTimeout(() => {
       addImageClickHandlers(settings);
+      renderIndependentApiControls(settings);
     }, 100);
   });
 
@@ -1276,6 +1288,7 @@ function registerEventHandlers(): void {
   context.eventSource.on(MESSAGE_UPDATED, () => {
     setTimeout(() => {
       addImageClickHandlers(settings);
+      renderIndependentApiControls(settings);
     }, 100);
   });
 
@@ -1677,6 +1690,7 @@ function initialize(): void {
 
   // Add click handlers to existing images
   addImageClickHandlers(settings);
+  renderIndependentApiControls(settings);
 }
 
 // Initialize when extension loads
