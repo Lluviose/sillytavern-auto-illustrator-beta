@@ -246,6 +246,16 @@ describe('regex', () => {
       );
     });
 
+    it('should unescape escaped backslashes', () => {
+      expect(unescapePromptQuotes('C:\\\\temp\\\\file')).toBe('C:\\temp\\file');
+    });
+
+    it('should unescape mixed escaped content', () => {
+      expect(unescapePromptQuotes('C:\\\\temp\\\\file \\"hi\\"')).toBe(
+        'C:\\temp\\file "hi"'
+      );
+    });
+
     it('should handle multiple escaped quotes', () => {
       expect(unescapePromptQuotes('\\"one\\" \\"two\\" \\"three\\"')).toBe(
         '"one" "two" "three"'

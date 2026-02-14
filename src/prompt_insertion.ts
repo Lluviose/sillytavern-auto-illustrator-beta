@@ -8,6 +8,20 @@ import {createLogger} from './logger';
 const logger = createLogger('PromptInsertion');
 
 /**
+ * Escapes prompt text for safe embedding in prompt tags.
+ *
+ * Prompts are stored in a double-quoted attribute-like format inside a comment:
+ *   <!--img-prompt="...-->
+ *
+ * To keep tags parseable (and avoid breaking detection), we escape:
+ * - Backslashes: \  -> \\
+ * - Double quotes: " -> \"
+ */
+export function escapePromptForPromptTag(promptText: string): string {
+  return promptText.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
  * Suggested prompt with context for insertion
  */
 export interface PromptSuggestion {
@@ -90,15 +104,17 @@ function findInsertionPoint(
  * @returns Complete prompt tag
  */
 function createPromptTag(tagTemplate: string, promptText: string): string {
+  const escapedPrompt = escapePromptForPromptTag(promptText);
+
   // If template doesn't contain {PROMPT} placeholder, assume it's a regex pattern
   // and construct the tag manually using the standard format
   if (!tagTemplate.includes('{PROMPT}')) {
     // Default to HTML comment format
-    return `<!--img-prompt="${promptText}"-->`;
+    return `<!--img-prompt="${escapedPrompt}"-->`;
   }
 
   // Replace {PROMPT} placeholder with actual prompt text
-  return tagTemplate.replace(/\{PROMPT\}/g, promptText);
+  return tagTemplate.replace(/\{PROMPT\}/g, escapedPrompt);
 }
 
 /**

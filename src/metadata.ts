@@ -20,22 +20,25 @@ const logger = createLogger('Metadata');
 
 /**
  * Cached reference to current chat's metadata
- * Set only in CHAT_CHANGED event handler
+ * Set by loadMetadataFromContext() (called on init + CHAT_CHANGED)
  */
 let currentMetadata: AutoIllustratorChatMetadata | null = null;
 
 /**
  * Gets the current chat's auto-illustrator metadata
- * Returns cached reference (must be set by CHAT_CHANGED handler first)
+ * Returns cached reference (loads lazily if not initialized yet)
  *
  * @returns Auto-illustrator metadata for current chat
- * @throws Error if metadata not initialized (CHAT_CHANGED hasn't fired yet)
+ * @throws Error if metadata cannot be loaded (context/chatMetadata unavailable)
  */
 export function getMetadata(): AutoIllustratorChatMetadata {
   if (!currentMetadata) {
-    throw new Error(
-      'Metadata not initialized. Make sure CHAT_CHANGED event has fired.'
-    );
+    logger.warn('Metadata not initialized; attempting to load from context');
+    loadMetadataFromContext();
+  }
+
+  if (!currentMetadata) {
+    throw new Error('Metadata not available (failed to load from context)');
   }
 
   return currentMetadata;
@@ -59,6 +62,11 @@ export function loadMetadataFromContext(): void {
   // context.chatMetadata is a reference to SillyTavern's global chat_metadata
   // We should NEVER reassign it, only read/modify its properties
   const chatMetadata = context.chatMetadata;
+  if (!chatMetadata) {
+    logger.error('Cannot load metadata: chatMetadata not available in context');
+    currentMetadata = null;
+    return;
+  }
 
   // Create metadata structure if it doesn't exist (new chat or not saved yet)
   if (!chatMetadata.auto_illustrator) {

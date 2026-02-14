@@ -89,8 +89,11 @@ export function escapeHtmlAttribute(str: string): string {
 /**
  * Unescapes quotes in an extracted prompt string
  *
- * Helper function to convert escaped quotes (\") back to regular quotes (")
+ * Helper function to convert escaped sequences back to their literal characters
  * after extracting from a regex capture group.
+ *
+ * - \\" -> "
+ * - \\\\ -> \\
  *
  * @param prompt - Prompt string with escaped quotes
  * @returns Prompt string with unescaped quotes
@@ -100,7 +103,8 @@ export function escapeHtmlAttribute(str: string): string {
  * // Returns: 'a "quoted" word'
  */
 export function unescapePromptQuotes(prompt: string): string {
-  return prompt.replace(/\\"/g, '"');
+  // Order matters: unescape quotes first so that sequences like \\\" round-trip correctly.
+  return prompt.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 }
 
 /**

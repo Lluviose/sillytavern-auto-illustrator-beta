@@ -10,7 +10,7 @@
 
 import {createLogger} from './logger';
 import {generatePromptsForMessage} from './services/prompt_generation_service';
-import {insertPromptTagsWithContext} from './prompt_insertion';
+import {escapePromptForPromptTag, insertPromptTagsWithContext} from './prompt_insertion';
 import {saveMetadata} from './metadata';
 import {sessionManager} from './session_manager';
 import {hasImagePrompts} from './image_extractor';
@@ -202,7 +202,8 @@ async function tryGenerateAndInsertPromptsOnce(
       : '<!--img-prompt="{PROMPT}"-->';
 
     for (const failed of insertionResult.failedSuggestions) {
-      const promptTag = promptTagTemplate.replace('{PROMPT}', failed.text);
+      const escaped = escapePromptForPromptTag(failed.text);
+      const promptTag = promptTagTemplate.replace('{PROMPT}', escaped);
       finalText += ` ${promptTag}`;
       totalInserted++;
     }

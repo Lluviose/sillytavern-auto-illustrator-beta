@@ -8,6 +8,7 @@ import {
   isValidSuggestion,
   type PromptSuggestion,
 } from './prompt_insertion';
+import {extractImagePrompts} from './image_extractor';
 
 describe('prompt_insertion', () => {
   describe('insertPromptTagsWithContext', () => {
@@ -36,6 +37,30 @@ describe('prompt_insertion', () => {
       );
       expect(result.updatedText).toMatch(/the forest\s+<!--img-prompt/);
       expect(result.updatedText).toMatch(/-->\s+under/);
+    });
+
+    it('should escape quotes/backslashes so prompts remain detectable', () => {
+      const messageText = 'Hello world.';
+      const promptText = 'C:\\temp\\file "hello"';
+      const suggestions: PromptSuggestion[] = [
+        {
+          text: promptText,
+          insertAfter: 'Hello',
+          insertBefore: ' world',
+        },
+      ];
+
+      const result = insertPromptTagsWithContext(
+        messageText,
+        suggestions,
+        tagTemplate
+      );
+
+      expect(result.insertedCount).toBe(1);
+
+      const extracted = extractImagePrompts(result.updatedText);
+      expect(extracted).toHaveLength(1);
+      expect(extracted[0].prompt).toBe(promptText);
     });
 
     it('should insert multiple prompt tags in correct order', () => {
