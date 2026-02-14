@@ -69,6 +69,56 @@ describe('Image Generator V2', () => {
     });
   });
 
+  describe('generateImage - global cooldown', () => {
+    it(
+      'should wait cooldown after completion before next attempt starts',
+      async () => {
+        // Use real timers here (Bottleneck doesn't reliably cooperate with fake timers)
+        const cooldownMs = 300;
+        const generationDurationMs = 300;
+
+        initializeConcurrencyLimiter(1, cooldownMs);
+
+        const callTimes: number[] = [];
+        const sdCallback = vi.fn().mockImplementation(async () => {
+          callTimes.push(Date.now());
+          return await new Promise<string>(resolve =>
+            setTimeout(() => resolve('https://example.com/test.jpg'), generationDurationMs)
+          );
+        });
+
+        const mockContext: any = {
+          SlashCommandParser: {
+            commands: {
+              sd: {
+                callback: sdCallback,
+              },
+            },
+          },
+        };
+
+        await expect(generateImage('prompt1', mockContext)).resolves.toBe(
+          'https://example.com/test.jpg'
+        );
+        await expect(generateImage('prompt2', mockContext)).resolves.toBe(
+          'https://example.com/test.jpg'
+        );
+
+        expect(sdCallback).toHaveBeenCalledTimes(2);
+        expect(callTimes).toHaveLength(2);
+
+        // completion-based cooldown => start2 >= start1 + generationDuration + cooldown
+        expect(callTimes[1] - callTimes[0]).toBeGreaterThanOrEqual(
+          generationDurationMs + cooldownMs - 50
+        );
+
+        // Ensure no cooldown leaks into other tests
+        updateMinInterval(0);
+      },
+      10_000
+    );
+  });
+
   describe('updateMaxConcurrent', () => {
     it('should update max concurrent limit', () => {
       initializeConcurrencyLimiter(1);

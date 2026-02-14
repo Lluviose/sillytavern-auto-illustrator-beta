@@ -25,6 +25,11 @@ let reconciliationConfig: ReconciliationConfig = {
   ...DEFAULT_RECONCILIATION_CONFIG,
 };
 
+// Global cooldown tracking (applies to both automatic + manual generations)
+// Cooldown starts after the previous generation attempt completes (success or failure).
+let minGenerationIntervalMs = 0;
+let lastGenerationCompletedAtMs = 0;
+
 /**
  * Updates reconciliation configuration
  * @param config - Partial configuration to update
@@ -48,6 +53,7 @@ export function initializeConcurrencyLimiter(
   maxConcurrent: number,
   minInterval = 0
 ): void {
+  minGenerationIntervalMs = minInterval;
   logger.info(
     `Initializing Bottleneck limiter (maxConcurrent: ${maxConcurrent}, minTime: ${minInterval}ms)`
   );
@@ -92,6 +98,7 @@ export function updateMaxConcurrent(maxConcurrent: number): void {
  * @param minInterval - New minimum interval (milliseconds)
  */
 export function updateMinInterval(minInterval: number): void {
+  minGenerationIntervalMs = minInterval;
   if (!imageLimiter) {
     logger.warn('Image limiter not initialized, initializing now');
     initializeConcurrencyLimiter(1, minInterval);
@@ -125,12 +132,47 @@ export async function generateImage(
   // If limiter not initialized, create with default values
   if (!imageLimiter) {
     logger.warn('Image limiter not initialized, using defaults (1, 0ms)');
+    minGenerationIntervalMs = 0;
     imageLimiter = new Bottleneck({
       maxConcurrent: 1,
       minTime: 0,
       trackDoneStatus: true,
     });
   }
+
+  const waitForGlobalCooldown = async (): Promise<void> => {
+    if (minGenerationIntervalMs <= 0) return;
+    if (!Number.isFinite(lastGenerationCompletedAtMs) || lastGenerationCompletedAtMs <= 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const earliestNextStart = lastGenerationCompletedAtMs + minGenerationIntervalMs;
+    const remainingMs = earliestNextStart - now;
+    if (remainingMs <= 0) return;
+
+    logger.debug(
+      `Global cooldown active - waiting ${remainingMs}ms before generating next image`
+    );
+
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(resolve, remainingMs);
+      if (!signal) return;
+
+      const onAbort = () => {
+        clearTimeout(timeoutId);
+        signal.removeEventListener('abort', onAbort);
+        reject(new Error('Generation aborted during cooldown wait'));
+      };
+
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+
+      signal.addEventListener('abort', onAbort, {once: true});
+    });
+  };
 
   // Check if aborted before even scheduling
   if (signal?.aborted) {
@@ -147,6 +189,19 @@ export async function generateImage(
       return null;
     }
 
+    // Enforce global cooldown starting from the last completed attempt (success/fail).
+    try {
+      await waitForGlobalCooldown();
+    } catch (error) {
+      logger.debug('Generation cancelled during cooldown wait:', error);
+      return null;
+    }
+
+    if (signal?.aborted) {
+      logger.debug('Generation aborted after cooldown wait:', prompt);
+      return null;
+    }
+
     // Apply common tags if provided
     const enhancedPrompt =
       commonTags && tagsPosition
@@ -160,6 +215,7 @@ export async function generateImage(
     }
 
     const startTime = performance.now();
+    let attemptedSdCommand = false;
 
     try {
       const sdCommand = context.SlashCommandParser?.commands?.['sd'];
@@ -173,6 +229,7 @@ export async function generateImage(
       }
 
       logger.debug('Calling SD command...');
+      attemptedSdCommand = true;
       const imageUrl = await sdCommand.callback(
         {quiet: 'true'},
         enhancedPrompt
@@ -191,6 +248,12 @@ export async function generateImage(
         error
       );
       return null;
+    } finally {
+      // Start cooldown timer after the request completes (success or failure).
+      // This is a global cooldown shared across all generation entry points.
+      if (attemptedSdCommand) {
+        lastGenerationCompletedAtMs = Date.now();
+      }
     }
   });
 }

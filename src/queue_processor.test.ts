@@ -303,6 +303,37 @@ describe('QueueProcessor', () => {
       expect(deferred[2].imageUrl).toContain('prompt_id_3');
     });
 
+    it('should auto-retry once and succeed on second attempt', async () => {
+      const mockSdCommand = vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('https://example.com/retry-success.jpg');
+      mockContext.SlashCommandParser = {
+        commands: {
+          sd: {
+            callback: mockSdCommand,
+          },
+        },
+      };
+
+      queue.addPrompt(
+        'test',
+        '<!--img-prompt="test"-->',
+        0,
+        10,
+        undefined,
+        'prompt_id_1'
+      );
+
+      await processor.processRemaining();
+
+      expect(mockSdCommand).toHaveBeenCalledTimes(2);
+      const deferred = processor.getDeferredImages();
+      expect(deferred).toHaveLength(1);
+      expect(deferred[0].isFailed).not.toBe(true);
+      expect(deferred[0].imageUrl).toBe('https://example.com/retry-success.jpg');
+    });
+
     it('should create placeholder with empty promptId if not provided', async () => {
       // Mock SD command to fail
       const mockSdCommand = vi.fn().mockResolvedValue(null);

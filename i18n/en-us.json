@@ -19,7 +19,7 @@
   "settings.maxConcurrent": "Max Concurrent Generations",
   "settings.maxConcurrentDesc": "Maximum number of images to generate simultaneously (recommended: 1 to limit rate)",
   "settings.minGenerationInterval": "Minimum Generation Interval (s)",
-  "settings.minGenerationIntervalDesc": "Minimum time delay between consecutive image generation requests, helping prevent rate limiting (0 = no delay)",
+  "settings.minGenerationIntervalDesc": "Global cooldown after a generation finishes (success or failure) before starting the next image request (0 = no delay)",
   "settings.logLevel": "Log Level",
   "settings.logLevelDesc": "Controls logging verbosity (DEBUG shows detailed monitoring, INFO shows key events, WARN/ERROR minimal)",
   "settings.logLevel.trace": "TRACE (Most Verbose)",

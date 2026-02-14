@@ -656,7 +656,7 @@ Result: Operations run concurrently, no conflicts (different messages)
 | Enable Streaming | Boolean | true/false | true | Generate during streaming |
 | Streaming Poll Interval | Number | 100-1000ms (step: 50) | 300ms | Prompt detection frequency |
 | Max Concurrent | Number | 1-5 (step: 1) | 1 | Simultaneous generations |
-| Min Generation Interval | Number | 0-60s (step: 1) | 0s | Delay between starts |
+| Min Generation Interval | Number | 0-60s (step: 1) | 0s | Global cooldown after completion |
 | Default Generation Mode | Choice | replace/append | append | Default for manual generation |
 | Meta Prompt Preset | Choice | list of presets | "default" | Active prompt template |
 | Meta Prompt Depth | Number | 0-20 (step: 1) | 0 | Insertion position in chat history (shared API mode only) |

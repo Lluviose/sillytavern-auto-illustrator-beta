@@ -72,8 +72,9 @@ export const MANUAL_GENERATION_MODE = {
 
 /**
  * Minimum generation interval configuration (milliseconds)
- * Enforces a minimum time delay between consecutive image generation requests
- * to prevent rate limiting or overwhelming the image generation API
+ * Global cooldown (after completion) between image generation requests
+ * Starts after a generation attempt finishes (success or failure)
+ * Helps prevent rate limiting or overwhelming the image generation API
  */
 export const MIN_GENERATION_INTERVAL = {
   DEFAULT: 0,

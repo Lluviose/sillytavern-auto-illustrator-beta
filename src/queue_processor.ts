@@ -159,12 +159,35 @@ export class QueueProcessor {
         throw new Error('Failed to get SillyTavern context');
       }
 
-      const imageUrl = await generateImage(
-        prompt.prompt,
-        context,
-        this.settings.commonStyleTags,
-        this.settings.commonStyleTagsPosition
-      );
+      // Auto-retry once on failure (null/throw). Useful for transient API errors / rate limits.
+      const maxAttempts = 2; // initial attempt + 1 retry
+      let lastErrorMessage: string | null = null;
+      let imageUrl: string | null = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (attempt > 1) {
+          logger.info(
+            `Auto-retrying image generation for prompt ${prompt.id} (attempt ${attempt}/${maxAttempts})`
+          );
+          // Update attempt counter + timestamps
+          this.queue.updateState(prompt.id, 'GENERATING');
+        }
+
+        try {
+          imageUrl = await generateImage(
+            prompt.prompt,
+            context,
+            this.settings.commonStyleTags,
+            this.settings.commonStyleTagsPosition
+          );
+          if (imageUrl) break;
+          lastErrorMessage = 'Image generation returned null';
+        } catch (error) {
+          lastErrorMessage =
+            error instanceof Error ? error.message : String(error);
+          imageUrl = null;
+        }
+      }
 
       if (imageUrl) {
         // Success
@@ -211,7 +234,10 @@ export class QueueProcessor {
         progressManager.completeTask(this.messageId);
       } else {
         // Failed - create placeholder for user to retry
-        this.handleGenerationFailure(prompt, 'Image generation returned null');
+        this.handleGenerationFailure(
+          prompt,
+          lastErrorMessage ?? 'Image generation returned null'
+        );
       }
     } catch (error) {
       // Error - create placeholder for user to retry
