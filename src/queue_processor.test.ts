@@ -331,7 +331,9 @@ describe('QueueProcessor', () => {
       const deferred = processor.getDeferredImages();
       expect(deferred).toHaveLength(1);
       expect(deferred[0].isFailed).not.toBe(true);
-      expect(deferred[0].imageUrl).toBe('https://example.com/retry-success.jpg');
+      expect(deferred[0].imageUrl).toBe(
+        'https://example.com/retry-success.jpg'
+      );
     });
 
     it('should create placeholder with empty promptId if not provided', async () => {

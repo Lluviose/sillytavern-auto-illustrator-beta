@@ -183,8 +183,9 @@ function updateUI(): void {
   if (maxConcurrentInput)
     maxConcurrentInput.value = settings.maxConcurrentGenerations.toString();
   if (minGenerationIntervalInput)
-    minGenerationIntervalInput.value =
-      (settings.minGenerationInterval / 1000).toString();
+    minGenerationIntervalInput.value = (
+      settings.minGenerationInterval / 1000
+    ).toString();
   if (logLevelSelect) logLevelSelect.value = settings.logLevel;
   if (promptPatternsTextarea)
     promptPatternsTextarea.value = settings.promptDetectionPatterns.join('\n');

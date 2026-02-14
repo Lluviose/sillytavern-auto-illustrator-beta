@@ -19,6 +19,12 @@ import {
   onIndependentPromptRetryStateChange,
 } from './independent_api_prompt_generation';
 import {t} from './i18n';
+import {getGenerationTimingInfo} from './image_generator';
+import {
+  estimateRemainingQueueMs,
+  formatDurationClock,
+} from './utils/time_utils';
+import {htmlEncode} from './utils/dom_utils';
 
 const logger = createLogger('IndependentApiControls');
 
@@ -52,7 +58,9 @@ function removeContainer(messageEl: HTMLElement): void {
   }
 }
 
-function getFailedPlaceholderImages(messageEl: HTMLElement): HTMLImageElement[] {
+function getFailedPlaceholderImages(
+  messageEl: HTMLElement
+): HTMLImageElement[] {
   return Array.from(
     messageEl.querySelectorAll(
       'img.auto-illustrator-img[data-failed-placeholder="true"][data-prompt-id]'
@@ -66,9 +74,14 @@ async function handleRetryPrompts(messageId: number): Promise<void> {
   const settings = latestSettings;
   if (!settings) return;
 
-  await ensureIndependentApiPromptsAndGenerateImages(messageId, context, settings, {
-    manual: true,
-  });
+  await ensureIndependentApiPromptsAndGenerateImages(
+    messageId,
+    context,
+    settings,
+    {
+      manual: true,
+    }
+  );
 }
 
 function handleCancelPromptRetry(messageId: number): void {
@@ -99,9 +112,14 @@ async function handleRetryFailedImages(messageId: number): Promise<void> {
   const failedImages = getFailedPlaceholderImages(messageEl);
   if (failedImages.length === 0) {
     // If there are prompts but no images at all, allow starting generation session manually.
-    await ensureIndependentApiPromptsAndGenerateImages(messageId, context, settings, {
-      manual: true,
-    });
+    await ensureIndependentApiPromptsAndGenerateImages(
+      messageId,
+      context,
+      settings,
+      {
+        manual: true,
+      }
+    );
     return;
   }
 
@@ -134,10 +152,7 @@ async function handleRetryFailedImages(messageId: number): Promise<void> {
   }
 
   if (queued > 0) {
-    toastr.info(
-      t('toast.retryQueued', {count: queued}),
-      t('extensionName')
-    );
+    toastr.info(t('toast.retryQueued', {count: queued}), t('extensionName'));
   } else {
     toastr.warning(t('toast.failedToGenerate'), t('extensionName'));
   }
@@ -181,11 +196,18 @@ function renderControlsForMessage(
   // or there are no auto-illustrator images yet (prompts but never generated/inserted).
   const hasAnyIllustratorImages = messageText.includes('auto-illustrator-img');
   const shouldShowRetryImages =
-    promptTagsPresent && !sessionActive && (hasFailedImages || !hasAnyIllustratorImages);
+    promptTagsPresent &&
+    !sessionActive &&
+    (hasFailedImages || !hasAnyIllustratorImages);
 
   const shouldShowPromptControls = !!retryState && !promptTagsPresent;
+  const shouldShowSessionStatus = sessionActive;
 
-  if (!shouldShowPromptControls && !shouldShowRetryImages) {
+  if (
+    !shouldShowPromptControls &&
+    !shouldShowRetryImages &&
+    !shouldShowSessionStatus
+  ) {
     removeContainer(messageEl);
     return;
   }
@@ -194,6 +216,57 @@ function renderControlsForMessage(
 
   const parts: string[] = [];
 
+  if (shouldShowSessionStatus && session) {
+    const status = session.processor.getStatus();
+    const stats = status.queueStats;
+    const queued = stats.QUEUED ?? 0;
+    const generating = stats.GENERATING ?? 0;
+    const completed = stats.COMPLETED ?? 0;
+    const failed = stats.FAILED ?? 0;
+
+    parts.push(
+      `<span class="auto-illustrator-independent-status">${htmlEncode(
+        t('controls.imageQueueStatus', {
+          queued,
+          generating,
+          active: status.activeGenerations,
+          max: status.maxConcurrent,
+          completed,
+          failed,
+        })
+      )}</span>`
+    );
+
+    const pendingCount = queued + generating;
+    const timing = getGenerationTimingInfo();
+    if (pendingCount > 0 && timing.cooldownRemainingMs > 0) {
+      const etaMs = estimateRemainingQueueMs({
+        pendingCount,
+        cooldownRemainingMs: timing.cooldownRemainingMs,
+        averageGenerationDurationMs: timing.averageGenerationDurationMs,
+        minGenerationIntervalMs: timing.minGenerationIntervalMs,
+        maxConcurrent: timing.maxConcurrent,
+      });
+
+      const cooldownText = t('progress.cooldownRemaining', {
+        time: formatDurationClock(timing.cooldownRemainingMs),
+      });
+      const etaText =
+        etaMs !== null
+          ? t('progress.queueEta', {time: formatDurationClock(etaMs)})
+          : '';
+
+      const detailText = etaText
+        ? `${cooldownText} • ${etaText}`
+        : cooldownText;
+      parts.push(
+        `<span class="auto-illustrator-independent-status auto-illustrator-independent-status-details">${htmlEncode(
+          detailText
+        )}</span>`
+      );
+    }
+  }
+
   if (shouldShowPromptControls && retryState) {
     if (retryState.status === 'scheduled' && retryState.nextRetryAt) {
       const seconds = Math.max(
@@ -201,11 +274,14 @@ function renderControlsForMessage(
         Math.round((retryState.nextRetryAt - Date.now()) / 1000)
       );
       parts.push(
-        `<span class="auto-illustrator-independent-status">${t('controls.promptRetryScheduled', {
-          seconds,
-          attempt: retryState.retryCount + 1,
-          total: retryState.maxRetries,
-        })}</span>`
+        `<span class="auto-illustrator-independent-status">${t(
+          'controls.promptRetryScheduled',
+          {
+            seconds,
+            attempt: retryState.retryCount + 1,
+            total: retryState.maxRetries,
+          }
+        )}</span>`
       );
     } else if (retryState.status === 'running') {
       parts.push(
@@ -218,6 +294,26 @@ function renderControlsForMessage(
     } else if (retryState.status === 'cancelled') {
       parts.push(
         `<span class="auto-illustrator-independent-status">${t('controls.promptRetryCancelled')}</span>`
+      );
+    }
+
+    if (
+      (retryState.status === 'scheduled' || retryState.status === 'failed') &&
+      (retryState.lastErrorType || retryState.lastErrorMessage)
+    ) {
+      const type = retryState.lastErrorType || 'unknown';
+      const message = retryState.lastErrorMessage || '';
+      const full = `${type}: ${message}`.trim();
+      const maxLen = 160;
+      const truncated =
+        full.length > maxLen ? full.substring(0, maxLen - 3) + '...' : full;
+
+      parts.push(
+        `<span class="auto-illustrator-independent-status auto-illustrator-independent-status-details" title="${htmlEncode(
+          full
+        )}">${htmlEncode(
+          t('controls.lastError', {type, message: truncated})
+        )}</span>`
       );
     }
 
@@ -301,4 +397,3 @@ export function renderIndependentApiControls(
     renderControlsForMessage(messageId, context, settings);
   }
 }
-

@@ -13,6 +13,11 @@
 import {createLogger} from './logger';
 import {t} from './i18n';
 import {openImageModal, type ModalImage} from './modal_viewer';
+import {getGenerationTimingInfo} from './image_generator';
+import {
+  estimateRemainingQueueMs,
+  formatDurationClock,
+} from './utils/time_utils';
 import type {
   ProgressManager,
   ProgressStartedEventDetail,
@@ -52,9 +57,75 @@ class ProgressWidgetView {
   private expandedMessages = new Set<number>(); // Track which messages are expanded
   private manuallyCollapsedMessages = new Set<number>(); // Track manually collapsed messages
   private updateTimer: number | null = null;
+  private statusTicker: number | null = null;
   private readonly THROTTLE_MS = 100; // Max 10 updates per second
   private readonly progressManager: ProgressManager;
   private readonly STORAGE_KEY = 'ai-img-widget-state-v1';
+
+  private clearStatusTicker(): void {
+    if (this.statusTicker === null) return;
+    window.clearInterval(this.statusTicker);
+    this.statusTicker = null;
+  }
+
+  private updateStatusTicker(
+    visibleMessages: Array<[number, MessageProgressState]>
+  ): void {
+    const timing = getGenerationTimingInfo();
+    const pendingCount = visibleMessages.reduce(
+      (sum, [, progress]) => sum + (progress.total - progress.current),
+      0
+    );
+    const shouldTick = pendingCount > 0 && timing.cooldownRemainingMs > 0;
+
+    if (shouldTick && this.statusTicker === null) {
+      this.statusTicker = window.setInterval(() => {
+        this.scheduleUpdate();
+      }, 1000);
+      return;
+    }
+
+    if (!shouldTick && this.statusTicker !== null) {
+      this.clearStatusTicker();
+    }
+  }
+
+  private buildHeaderStatusText(
+    visibleMessages: Array<[number, MessageProgressState]>
+  ): string | null {
+    const timing = getGenerationTimingInfo();
+    const pendingCount = visibleMessages.reduce(
+      (sum, [, progress]) => sum + (progress.total - progress.current),
+      0
+    );
+
+    if (pendingCount <= 0) return null;
+    if (timing.cooldownRemainingMs <= 0) return null;
+
+    const etaMs = estimateRemainingQueueMs({
+      pendingCount,
+      cooldownRemainingMs: timing.cooldownRemainingMs,
+      averageGenerationDurationMs: timing.averageGenerationDurationMs,
+      minGenerationIntervalMs: timing.minGenerationIntervalMs,
+      maxConcurrent: timing.maxConcurrent,
+    });
+
+    const parts: string[] = [
+      t('progress.cooldownRemaining', {
+        time: formatDurationClock(timing.cooldownRemainingMs),
+      }),
+    ];
+
+    if (etaMs !== null) {
+      parts.push(
+        t('progress.queueEta', {
+          time: formatDurationClock(etaMs),
+        })
+      );
+    }
+
+    return parts.join(' • ');
+  }
 
   private loadStateFromStorage(): void {
     try {
@@ -133,6 +204,7 @@ class ProgressWidgetView {
     this.messageProgress.clear();
     this.closedMessages.clear();
     this.expandedMessages.clear();
+    this.clearStatusTicker();
     // Don't clear manuallyCollapsedMessages - that's a UI preference
     // Don't clear isWidgetCollapsed - that's also a UI preference
     this.scheduleUpdate();
@@ -282,6 +354,9 @@ class ProgressWidgetView {
       ([messageId]) => !this.closedMessages.has(messageId)
     );
 
+    // Keep countdown/ETA live while cooldown is active
+    this.updateStatusTicker(visibleMessages);
+
     logger.debug(
       `Updating display: ${visibleMessages.length} visible message(s) (${this.closedMessages.size} closed), widget collapsed: ${this.isWidgetCollapsed}`
     );
@@ -291,6 +366,7 @@ class ProgressWidgetView {
 
     if (visibleMessages.length === 0) {
       // No visible messages - hide widget
+      this.clearStatusTicker();
       widget.style.display = 'none';
       widget.innerHTML = ''; // Only clear when actually hiding
       logger.debug('No visible messages, hiding widget');
@@ -409,16 +485,15 @@ class ProgressWidgetView {
       0
     );
 
-    // Update title
+    const baseTitle = allComplete
+      ? t('progress.summaryComplete', {count: String(visibleMessages.length)})
+      : t('progress.summaryGenerating', {
+          count: String(visibleMessages.length),
+        });
+    const statusText = this.buildHeaderStatusText(visibleMessages);
     fab.setAttribute(
       'title',
-      allComplete
-        ? t('progress.summaryComplete', {
-            count: String(visibleMessages.length),
-          })
-        : t('progress.summaryGenerating', {
-            count: String(visibleMessages.length),
-          })
+      statusText ? `${baseTitle}\n${statusText}` : baseTitle
     );
 
     // Update icon (spinner or checkmark)
@@ -501,6 +576,25 @@ class ProgressWidgetView {
       title.textContent = allComplete
         ? t('progress.imagesGenerated')
         : t('progress.generatingImages');
+    }
+
+    // Update status line (cooldown/ETA)
+    let headerStatus = widget.querySelector(
+      '.ai-img-progress-header-status'
+    ) as HTMLElement | null;
+    if (!headerStatus) {
+      headerStatus = document.createElement('div');
+      headerStatus.className = 'ai-img-progress-header-status';
+      header.insertAdjacentElement('afterend', headerStatus);
+    }
+
+    const statusText = this.buildHeaderStatusText(visibleMessages);
+    if (statusText) {
+      headerStatus.style.display = '';
+      headerStatus.textContent = statusText;
+    } else {
+      headerStatus.style.display = 'none';
+      headerStatus.textContent = '';
     }
 
     // Update message containers
@@ -856,13 +950,13 @@ class ProgressWidgetView {
     // Create FAB button
     const fab = document.createElement('button');
     fab.className = 'ai-img-progress-fab';
-    fab.title = allComplete
-      ? t('progress.summaryComplete', {
-          count: String(visibleMessages.length),
-        })
+    const baseTitle = allComplete
+      ? t('progress.summaryComplete', {count: String(visibleMessages.length)})
       : t('progress.summaryGenerating', {
           count: String(visibleMessages.length),
         });
+    const statusText = this.buildHeaderStatusText(visibleMessages);
+    fab.title = statusText ? `${baseTitle}\n${statusText}` : baseTitle;
     fab.addEventListener('click', () => {
       this.isWidgetCollapsed = false;
       this.saveStateToStorage();
@@ -957,6 +1051,17 @@ class ProgressWidgetView {
     header.appendChild(closeBtn);
 
     widget.appendChild(header);
+
+    // Optional status line (cooldown/ETA)
+    const headerStatus = document.createElement('div');
+    headerStatus.className = 'ai-img-progress-header-status';
+    const statusText = this.buildHeaderStatusText(visibleMessages);
+    if (statusText) {
+      headerStatus.textContent = statusText;
+    } else {
+      headerStatus.style.display = 'none';
+    }
+    widget.appendChild(headerStatus);
 
     // Add progress content for each message
     const container = document.createElement('div');

@@ -188,6 +188,13 @@
   flex: 1;
 }
 
+.ai-img-progress-header-status {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: -0.5rem;
+  line-height: 1.25;
+}
+
 .ai-img-progress-close {
   width: 28px;
   height: 28px;
@@ -2372,4 +2379,10 @@ img[data-failed-placeholder='true']:hover {
 .auto-illustrator-independent-status {
   font-size: 0.85em;
   opacity: 0.8;
+}
+
+.auto-illustrator-independent-status-details {
+  font-size: 0.8em;
+  opacity: 0.7;
+  flex-basis: 100%;
 }

@@ -10,7 +10,10 @@
 
 import {createLogger} from './logger';
 import {generatePromptsForMessage} from './services/prompt_generation_service';
-import {escapePromptForPromptTag, insertPromptTagsWithContext} from './prompt_insertion';
+import {
+  escapePromptForPromptTag,
+  insertPromptTagsWithContext,
+} from './prompt_insertion';
 import {saveMetadata} from './metadata';
 import {sessionManager} from './session_manager';
 import {hasImagePrompts} from './image_extractor';
@@ -49,9 +52,7 @@ const states = new Map<number, InternalState>();
 const STATE_EVENT = 'auto-illustrator:independent-api-prompt-retry-state';
 
 function emitState(messageId: number): void {
-  document.dispatchEvent(
-    new CustomEvent(STATE_EVENT, {detail: {messageId}})
-  );
+  document.dispatchEvent(new CustomEvent(STATE_EVENT, {detail: {messageId}}));
 }
 
 export function getIndependentPromptRetryState(
@@ -60,8 +61,11 @@ export function getIndependentPromptRetryState(
   const state = states.get(messageId);
   if (!state) return null;
 
-  const {abortController: _abortController, timeoutId: _timeoutId, ...publicState} =
-    state;
+  const {
+    abortController: _abortController,
+    timeoutId: _timeoutId,
+    ...publicState
+  } = state;
   return publicState;
 }
 
@@ -103,7 +107,9 @@ export function cancelIndependentPromptRetries(
   state.status = 'cancelled';
   state.nextRetryAt = undefined;
 
-  logger.info(`Cancelled independent API prompt retries for message ${messageId}`);
+  logger.info(
+    `Cancelled independent API prompt retries for message ${messageId}`
+  );
   if (!options?.silent) {
     toastr.info(t('toast.promptRetryCancelled'), t('extensionName'));
   }
@@ -178,7 +184,9 @@ async function tryGenerateAndInsertPromptsOnce(
     return 'no-prompts';
   }
 
-  logger.info(`LLM generated ${prompts.length} prompt(s) for message ${messageId}`);
+  logger.info(
+    `LLM generated ${prompts.length} prompt(s) for message ${messageId}`
+  );
 
   // Insert prompt tags into message using context matching
   const tagTemplate = settings.promptDetectionPatterns?.[0] || '';
@@ -219,7 +227,9 @@ async function tryGenerateAndInsertPromptsOnce(
   message.mes = finalText;
   await saveMetadata();
 
-  logger.info(`Inserted ${totalInserted} prompt tag(s) into message ${messageId}`);
+  logger.info(
+    `Inserted ${totalInserted} prompt tag(s) into message ${messageId}`
+  );
   return 'success';
 }
 
@@ -360,7 +370,10 @@ export async function ensureIndependentApiPromptsAndGenerateImages(
       // Cancel any existing schedule and restart fresh
       cancelIndependentPromptRetries(messageId, {silent: true});
       states.delete(messageId);
-    } else if (existing.status === 'running' || existing.status === 'scheduled') {
+    } else if (
+      existing.status === 'running' ||
+      existing.status === 'scheduled'
+    ) {
       logger.debug(
         `Prompt generation already in progress for message ${messageId}, skipping duplicate`
       );

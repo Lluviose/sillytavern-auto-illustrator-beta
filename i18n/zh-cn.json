@@ -124,6 +124,8 @@
   "progress.generatingImages": "正在生成图像",
   "progress.imageIndex": "{current}/{total}",
   "progress.loading": "加载中...",
+  "progress.cooldownRemaining": "冷却 {time}",
+  "progress.queueEta": "队列预计 {time}",
   "progress.closeWidget": "关闭",
   "progress.imagesGenerated": "图片已生成",
   "progress.messageCount": "{count} 条消息",
@@ -214,5 +216,7 @@
   "controls.promptRetryScheduled": "提示词将在{seconds}s后重试（{attempt}/{total}）",
   "controls.promptRetryRunning": "正在生成提示词...",
   "controls.promptRetryFailed": "提示词生成失败",
-  "controls.promptRetryCancelled": "已取消自动重试"
+  "controls.promptRetryCancelled": "已取消自动重试",
+  "controls.imageQueueStatus": "生图队列：{queued} 排队，{generating} 生成中（{active}/{max}），{completed} 成功，{failed} 失败",
+  "controls.lastError": "上次错误：{type} - {message}"
 }

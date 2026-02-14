@@ -29,6 +29,65 @@ let reconciliationConfig: ReconciliationConfig = {
 // Cooldown starts after the previous generation attempt completes (success or failure).
 let minGenerationIntervalMs = 0;
 let lastGenerationCompletedAtMs = 0;
+let maxConcurrentGenerations = 1;
+
+const generationDurationSamplesMs: number[] = [];
+const MAX_GENERATION_DURATION_SAMPLES = 20;
+
+function recordGenerationDurationSample(durationMs: number): void {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return;
+  generationDurationSamplesMs.push(durationMs);
+  if (generationDurationSamplesMs.length > MAX_GENERATION_DURATION_SAMPLES) {
+    generationDurationSamplesMs.splice(
+      0,
+      generationDurationSamplesMs.length - MAX_GENERATION_DURATION_SAMPLES
+    );
+  }
+}
+
+export interface GenerationTimingInfo {
+  maxConcurrent: number;
+  minGenerationIntervalMs: number;
+  lastGenerationCompletedAtMs: number;
+  cooldownRemainingMs: number;
+  averageGenerationDurationMs: number | null;
+  durationSampleCount: number;
+}
+
+export function getAverageGenerationDurationMs(): number | null {
+  if (generationDurationSamplesMs.length === 0) return null;
+  const sum = generationDurationSamplesMs.reduce((acc, ms) => acc + ms, 0);
+  return sum / generationDurationSamplesMs.length;
+}
+
+export function getGlobalCooldownRemainingMs(
+  nowMs: number = Date.now()
+): number {
+  if (minGenerationIntervalMs <= 0) return 0;
+  if (
+    !Number.isFinite(lastGenerationCompletedAtMs) ||
+    lastGenerationCompletedAtMs <= 0
+  ) {
+    return 0;
+  }
+
+  const earliestNextStart =
+    lastGenerationCompletedAtMs + minGenerationIntervalMs;
+  return Math.max(0, earliestNextStart - nowMs);
+}
+
+export function getGenerationTimingInfo(
+  nowMs: number = Date.now()
+): GenerationTimingInfo {
+  return {
+    maxConcurrent: maxConcurrentGenerations,
+    minGenerationIntervalMs,
+    lastGenerationCompletedAtMs,
+    cooldownRemainingMs: getGlobalCooldownRemainingMs(nowMs),
+    averageGenerationDurationMs: getAverageGenerationDurationMs(),
+    durationSampleCount: generationDurationSamplesMs.length,
+  };
+}
 
 /**
  * Updates reconciliation configuration
@@ -54,6 +113,7 @@ export function initializeConcurrencyLimiter(
   minInterval = 0
 ): void {
   minGenerationIntervalMs = minInterval;
+  maxConcurrentGenerations = maxConcurrent;
   logger.info(
     `Initializing Bottleneck limiter (maxConcurrent: ${maxConcurrent}, minTime: ${minInterval}ms)`
   );
@@ -83,6 +143,7 @@ export function initializeConcurrencyLimiter(
  * @param maxConcurrent - New max concurrent limit
  */
 export function updateMaxConcurrent(maxConcurrent: number): void {
+  maxConcurrentGenerations = maxConcurrent;
   if (!imageLimiter) {
     logger.warn('Image limiter not initialized, initializing now');
     initializeConcurrencyLimiter(maxConcurrent);
@@ -133,6 +194,7 @@ export async function generateImage(
   if (!imageLimiter) {
     logger.warn('Image limiter not initialized, using defaults (1, 0ms)');
     minGenerationIntervalMs = 0;
+    maxConcurrentGenerations = 1;
     imageLimiter = new Bottleneck({
       maxConcurrent: 1,
       minTime: 0,
@@ -142,12 +204,16 @@ export async function generateImage(
 
   const waitForGlobalCooldown = async (): Promise<void> => {
     if (minGenerationIntervalMs <= 0) return;
-    if (!Number.isFinite(lastGenerationCompletedAtMs) || lastGenerationCompletedAtMs <= 0) {
+    if (
+      !Number.isFinite(lastGenerationCompletedAtMs) ||
+      lastGenerationCompletedAtMs <= 0
+    ) {
       return;
     }
 
     const now = Date.now();
-    const earliestNextStart = lastGenerationCompletedAtMs + minGenerationIntervalMs;
+    const earliestNextStart =
+      lastGenerationCompletedAtMs + minGenerationIntervalMs;
     const remainingMs = earliestNextStart - now;
     if (remainingMs <= 0) return;
 
@@ -216,6 +282,7 @@ export async function generateImage(
 
     const startTime = performance.now();
     let attemptedSdCommand = false;
+    let durationMs: number | null = null;
 
     try {
       const sdCommand = context.SlashCommandParser?.commands?.['sd'];
@@ -235,16 +302,16 @@ export async function generateImage(
         enhancedPrompt
       );
 
-      const duration = performance.now() - startTime;
+      durationMs = performance.now() - startTime;
       logger.debug(
-        `Generated image URL: ${imageUrl} (took ${duration.toFixed(0)}ms)`
+        `Generated image URL: ${imageUrl} (took ${durationMs.toFixed(0)}ms)`
       );
 
       return imageUrl;
     } catch (error) {
-      const duration = performance.now() - startTime;
+      durationMs = performance.now() - startTime;
       logger.error(
-        `Error generating image (after ${duration.toFixed(0)}ms):`,
+        `Error generating image (after ${durationMs.toFixed(0)}ms):`,
         error
       );
       return null;
@@ -253,6 +320,9 @@ export async function generateImage(
       // This is a global cooldown shared across all generation entry points.
       if (attemptedSdCommand) {
         lastGenerationCompletedAtMs = Date.now();
+        if (durationMs !== null) {
+          recordGenerationDurationSample(durationMs);
+        }
       }
     }
   });
