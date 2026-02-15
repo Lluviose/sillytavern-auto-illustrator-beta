@@ -327,7 +327,7 @@ REASONING: Second
       expect(result.errorType).toBe('llm-call-failed');
     });
 
-    it('should fall back to generateRaw(messages) when generateRaw(string) fails', async () => {
+    it('should prefer generateRaw(messages) when available', async () => {
       const messageText = 'She walked through the forest under the moonlight.';
       const llmResponse = `---PROMPT---
 TEXT: 1girl, forest, moonlight, highly detailed
@@ -339,6 +339,35 @@ REASONING: Key visual scene
       vi.mocked(mockContext.generateRaw).mockImplementation(async options => {
         if (typeof options.prompt === 'string') {
           throw new Error('502 Bad Gateway');
+        }
+        return llmResponse;
+      });
+
+      const result = await generatePromptsForMessage(
+        messageText,
+        mockContext,
+        mockSettings
+      );
+
+      expect(result.status).toBe('success');
+      expect(result.suggestions).toHaveLength(1);
+      expect(vi.mocked(mockContext.generateRaw)).toHaveBeenCalledTimes(1);
+      const firstCall = vi.mocked(mockContext.generateRaw).mock.calls[0]?.[0];
+      expect(Array.isArray(firstCall.prompt)).toBe(true);
+    });
+
+    it('should fall back to generateRaw(string) when generateRaw(messages) fails', async () => {
+      const messageText = 'She walked through the forest under the moonlight.';
+      const llmResponse = `---PROMPT---
+TEXT: 1girl, forest, moonlight, highly detailed
+INSERT_AFTER: through the forest
+INSERT_BEFORE: under the moonlight
+REASONING: Key visual scene
+---END---`;
+
+      vi.mocked(mockContext.generateRaw).mockImplementation(async options => {
+        if (typeof options.prompt !== 'string') {
+          throw new Error('Unsupported messages format');
         }
         return llmResponse;
       });

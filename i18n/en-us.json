@@ -139,6 +139,7 @@
   "progress.loading": "Loading...",
   "progress.cooldownRemaining": "Cooldown {time}",
   "progress.queueEta": "Queue ETA {time}",
+  "progress.queueEtaUnknown": "Queue ETA calculating…",
   "progress.closeWidget": "Close",
   "progress.imagesGenerated": "Images Generated",
   "progress.messageCount": "{count} message(s)",

@@ -276,7 +276,13 @@ async function runAttempt(
     if (result === 'success') {
       // Prompts are now in the message; start image generation session.
       try {
-        await startNonStreamingGenerationSession(messageId, context, settings);
+        if (sessionManager.getSession(messageId)) {
+          logger.debug(
+            `Image generation session already active for message ${messageId}; skipping duplicate start`
+          );
+        } else {
+          await startNonStreamingGenerationSession(messageId, context, settings);
+        }
       } catch (error) {
         logger.error(
           `Failed to start image generation session for message ${messageId}:`,
@@ -358,6 +364,15 @@ export async function ensureIndependentApiPromptsAndGenerateImages(
 
   const currentText = message.mes || '';
   if (hasImagePrompts(currentText, settings.promptDetectionPatterns)) {
+    // If prompt retries are scheduled for this message, cancel them now to avoid duplicate sessions.
+    const existingState = states.get(messageId);
+    if (existingState) {
+      clearTimer(existingState);
+      existingState.abortController.abort();
+      states.delete(messageId);
+      emitState(messageId);
+    }
+
     try {
       await startNonStreamingGenerationSession(messageId, context, settings);
     } catch (error) {

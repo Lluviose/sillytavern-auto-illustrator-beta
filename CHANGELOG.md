@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Independent API Prompt Generation (502/Bad Gateway)** - Reduce upstream 502s by sanitizing and bounding the context sent to the prompt-generation LLM call
+  - Strips Auto-Illustrator idempotency markers, generated `<img>` tags, and prompt tags from *context* messages (current message remains unchanged for insertion accuracy)
+  - Caps context size to avoid proxy payload/context-length failures
+  - Prefers `generateRaw(messages)` (chat-style) before `generateRaw(string)` for better OpenAI-compatible support, with `generateQuietPrompt` as a final fallback
+- **Progress Widget Cooldown/ETA Visibility** - Improve generation status clarity during cooldown
+  - Collapsed progress widget now shows a visible cooldown/queue-ETA pill (not just a tooltip)
+  - When timing samples are unavailable, displays “Queue ETA calculating…” instead of hiding the ETA
+- **Build Script** - `npm run compile` now uses `tsconfig.build.json` (excludes tests) so compilation succeeds in CI-like environments
 - **Image Click Handlers (Race Condition + Selector Bug + HTML Encoding)** - Fixed critical bug where click handlers failed to attach to images, especially failed generation placeholders
   - Root cause #1: Race condition between `renderMessageUpdate()` and `attachRegenerationHandlers()` - handlers were attached before DOM was ready
   - Root cause #2: CSS selector failure with data URIs containing `#` fragment identifiers - `querySelector('img[src="data:...#promptId=..."]')` fails due to invalid CSS syntax

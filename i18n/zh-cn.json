@@ -126,6 +126,7 @@
   "progress.loading": "加载中...",
   "progress.cooldownRemaining": "冷却 {time}",
   "progress.queueEta": "队列预计 {time}",
+  "progress.queueEtaUnknown": "队列预计计算中…",
   "progress.closeWidget": "关闭",
   "progress.imagesGenerated": "图片已生成",
   "progress.messageCount": "{count} 条消息",

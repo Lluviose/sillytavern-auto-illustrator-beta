@@ -116,7 +116,9 @@ class ProgressWidgetView {
       }),
     ];
 
-    if (etaMs !== null) {
+    if (etaMs === null) {
+      parts.push(t('progress.queueEtaUnknown'));
+    } else {
       parts.push(
         t('progress.queueEta', {
           time: formatDurationClock(etaMs),
@@ -495,6 +497,23 @@ class ProgressWidgetView {
       'title',
       statusText ? `${baseTitle}\n${statusText}` : baseTitle
     );
+
+    // Optional visible status pill (cooldown/ETA) for collapsed mode
+    let statusPill = widget.querySelector(
+      '.ai-img-progress-fab-status'
+    ) as HTMLElement | null;
+    if (statusText) {
+      if (!statusPill) {
+        statusPill = document.createElement('div');
+        statusPill.className = 'ai-img-progress-fab-status';
+        widget.appendChild(statusPill);
+      }
+      statusPill.style.display = '';
+      statusPill.textContent = statusText;
+      statusPill.title = statusText;
+    } else if (statusPill) {
+      statusPill.remove();
+    }
 
     // Update icon (spinner or checkmark)
     const spinner = fab.querySelector('.ai-img-progress-fab-spinner');
@@ -983,6 +1002,15 @@ class ProgressWidgetView {
     }
 
     widget.appendChild(fab);
+
+    // Optional visible status pill (cooldown/ETA)
+    if (statusText) {
+      const statusPill = document.createElement('div');
+      statusPill.className = 'ai-img-progress-fab-status';
+      statusPill.textContent = statusText;
+      statusPill.title = statusText;
+      widget.appendChild(statusPill);
+    }
   }
 
   /**

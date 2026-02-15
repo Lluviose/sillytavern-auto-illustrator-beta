@@ -6,6 +6,8 @@
 import {createLogger} from '../logger';
 import promptGenerationTemplate from '../presets/prompt_generation.md';
 import type {PromptSuggestion} from '../prompt_insertion';
+import {DEFAULT_PROMPT_DETECTION_PATTERNS} from '../constants';
+import {removeAllMarkers} from '../reconciliation';
 
 const logger = createLogger('PromptGenService');
 
@@ -51,6 +53,29 @@ function shouldRetryWithReducedContext(errorMessage: string): boolean {
   );
 }
 
+function sanitizeContextText(
+  text: string,
+  patterns: string[] = DEFAULT_PROMPT_DETECTION_PATTERNS
+): string {
+  let result = removeAllMarkers(text || '');
+
+  // Remove any prompt tags (e.g., <!--img-prompt="..."-->), using the current detection patterns.
+  for (const pattern of patterns) {
+    try {
+      result = result.replace(new RegExp(pattern, 'gi'), '');
+    } catch {
+      // Ignore invalid patterns; settings UI should validate these, but be defensive.
+    }
+  }
+
+  // Remove any <img ...> tags to avoid bloating context and confusing the LLM.
+  result = result.replace(/<img\s+[^>]*>/gi, '');
+
+  // Normalize whitespace a bit for readability and to reduce payload size.
+  result = result.replace(/\n{3,}/g, '\n\n').trim();
+  return result;
+}
+
 /**
  * Builds user prompt with context from previous messages
  * Format: === CONTEXT === ... === CURRENT MESSAGE === ...
@@ -64,7 +89,8 @@ function buildUserPromptWithContext(
   context: SillyTavernContext,
   currentMessageText: string,
   contextMessageCount: number,
-  currentMessageIndex?: number
+  currentMessageIndex?: number,
+  patterns: string[] = DEFAULT_PROMPT_DETECTION_PATTERNS
 ): string {
   // Get recent chat history (last N messages, excluding current)
   const chat = context.chat || [];
@@ -81,13 +107,43 @@ function buildUserPromptWithContext(
 
   let contextText = '';
   if (recentMessages.length > 0 && contextMessageCount > 0) {
-    contextText = recentMessages
-      .map(msg => {
-        const name = msg.name || (msg.is_user ? 'User' : 'Assistant');
-        const text = msg.mes || '';
-        return `${name}: ${text}`;
-      })
-      .join('\n\n');
+    // Keep context bounded to avoid upstream proxy errors (502/413) when chats contain lots of images/HTML.
+    // Only the CURRENT MESSAGE needs exact text for insertion points; context is reference-only.
+    const MAX_CONTEXT_TOTAL_CHARS = 20000;
+    const MAX_CONTEXT_MESSAGE_CHARS = 4000;
+
+    const selected: string[] = [];
+    let totalChars = 0;
+
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const msg = recentMessages[i];
+      const name = msg.name || (msg.is_user ? 'User' : 'Assistant');
+      let text = sanitizeContextText(msg.mes || '', patterns);
+      if (!text) continue;
+
+      if (text.length > MAX_CONTEXT_MESSAGE_CHARS) {
+        text = text.substring(0, MAX_CONTEXT_MESSAGE_CHARS - 3) + '...';
+      }
+
+      const block = `${name}: ${text}`;
+      const separatorChars = selected.length > 0 ? 2 : 0; // \n\n
+      const nextTotal = totalChars + separatorChars + block.length;
+
+      if (nextTotal > MAX_CONTEXT_TOTAL_CHARS) {
+        if (selected.length === 0) {
+          // Always include at least one message, truncated to fit.
+          const room = Math.max(0, MAX_CONTEXT_TOTAL_CHARS - separatorChars);
+          selected.push(block.substring(0, room));
+        }
+        break;
+      }
+
+      selected.push(block);
+      totalChars = nextTotal;
+    }
+
+    selected.reverse();
+    contextText = selected.join('\n\n') || '(No previous messages)';
   } else {
     contextText = '(No previous messages)';
   }
@@ -253,11 +309,16 @@ export async function generatePromptsForMessage(
 
   // Build user prompt with context and current message
   const contextMessageCount = settings.contextMessageCount || 10;
+  const patterns =
+    settings.promptDetectionPatterns?.length > 0
+      ? settings.promptDetectionPatterns
+      : DEFAULT_PROMPT_DETECTION_PATTERNS;
   const userPrompt = buildUserPromptWithContext(
     context,
     messageText,
     contextMessageCount,
-    options?.messageId
+    options?.messageId,
+    patterns
   );
 
   logger.debug('Calling LLM for prompt generation (using generateRaw)');
@@ -270,35 +331,35 @@ export async function generatePromptsForMessage(
     const errors: string[] = [];
     let llmResponse: string;
 
-    // Primary: generateRaw with string prompt
+    // Prefer chat-style messages first for better compatibility with OpenAI-style APIs.
+    const messages: Array<{role: string; content: string}> = [];
+    if (systemPrompt && systemPrompt.trim().length > 0) {
+      messages.push({role: 'system', content: systemPrompt});
+    }
+    messages.push({role: 'user', content: promptText});
+
+    // Primary: generateRaw with chat-style message array
     try {
       llmResponse = await context.generateRaw({
-        systemPrompt,
-        prompt: promptText,
+        prompt: messages as unknown[],
       });
       logger.info('Prompt generation LLM call succeeded', {
-        method: 'generateRaw(string)',
+        method: 'generateRaw(messages)',
       });
     } catch (error) {
-      errors.push(formatLlmCallError('generateRaw(string)', error));
+      errors.push(formatLlmCallError('generateRaw(messages)', error));
 
-      // Fallback: generateRaw with chat-style message array
-      // Some providers only support chat completions and may fail on raw string prompts.
-      const messages: Array<{role: string; content: string}> = [];
-      if (systemPrompt && systemPrompt.trim().length > 0) {
-        messages.push({role: 'system', content: systemPrompt});
-      }
-      messages.push({role: 'user', content: promptText});
-
+      // Fallback: generateRaw with string prompt
       try {
         llmResponse = await context.generateRaw({
-          prompt: messages as unknown[],
+          systemPrompt,
+          prompt: promptText,
         });
         logger.info('Prompt generation LLM call succeeded', {
-          method: 'generateRaw(messages)',
+          method: 'generateRaw(string)',
         });
       } catch (secondError) {
-        errors.push(formatLlmCallError('generateRaw(messages)', secondError));
+        errors.push(formatLlmCallError('generateRaw(string)', secondError));
 
         // Last resort: generateQuietPrompt (chat pipeline, no message insertion)
         if (typeof context.generateQuietPrompt === 'function') {
@@ -306,6 +367,7 @@ export async function generatePromptsForMessage(
             const combined = `SYSTEM:\n${systemPrompt}\n\nUSER:\n${promptText}`;
             llmResponse = await context.generateQuietPrompt({
               quietPrompt: combined,
+              quietToLoud: false,
             });
             logger.info('Prompt generation LLM call succeeded', {
               method: 'generateQuietPrompt',

@@ -57,6 +57,8 @@
   width: auto !important;
   height: auto !important;
   padding: 8px;
+  gap: 0.25rem;
+  align-items: center;
   background: transparent;
   backdrop-filter: none;
   box-shadow: none;
@@ -134,6 +136,21 @@
   min-width: 18px;
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.ai-img-progress-fab-status {
+  max-width: min(320px, 85vw);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none; /* Don't block clicks when collapsed */
 }
 
 /* Expanded widget state */

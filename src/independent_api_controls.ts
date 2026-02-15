@@ -341,9 +341,9 @@ function renderControlsForMessage(
         time: formatDurationClock(timing.cooldownRemainingMs),
       });
       const etaText =
-        etaMs !== null
-          ? t('progress.queueEta', {time: formatDurationClock(etaMs)})
-          : '';
+        etaMs === null
+          ? t('progress.queueEtaUnknown')
+          : t('progress.queueEta', {time: formatDurationClock(etaMs)});
 
       const detailText = etaText
         ? `${cooldownText} • ${etaText}`
