@@ -34,6 +34,23 @@ function formatLlmCallError(method: LlmCallMethod, error: unknown): string {
   return `${method}: ${message}`;
 }
 
+function shouldRetryWithReducedContext(errorMessage: string): boolean {
+  const lower = (errorMessage || '').toLowerCase();
+  return (
+    lower.includes('502') ||
+    lower.includes('bad gateway') ||
+    lower.includes('504') ||
+    lower.includes('gateway timeout') ||
+    lower.includes('413') ||
+    lower.includes('payload too large') ||
+    lower.includes('request entity too large') ||
+    lower.includes('context length') ||
+    lower.includes('too many tokens') ||
+    lower.includes('max_tokens') ||
+    lower.includes('timeout')
+  );
+}
+
 /**
  * Builds user prompt with context from previous messages
  * Format: === CONTEXT === ... === CURRENT MESSAGE === ...
@@ -238,15 +255,15 @@ export async function generatePromptsForMessage(
   logger.trace('User prompt:', userPrompt);
 
   // Call LLM with generateRaw (no chat context)
-  let llmResponse: string;
-  try {
+  const callPromptLlm = async (promptText: string): Promise<string> => {
     const errors: string[] = [];
+    let llmResponse: string;
 
     // Primary: generateRaw with string prompt
     try {
       llmResponse = await context.generateRaw({
         systemPrompt,
-        prompt: userPrompt,
+        prompt: promptText,
       });
       logger.info('Prompt generation LLM call succeeded', {
         method: 'generateRaw(string)',
@@ -260,7 +277,7 @@ export async function generatePromptsForMessage(
       if (systemPrompt && systemPrompt.trim().length > 0) {
         messages.push({role: 'system', content: systemPrompt});
       }
-      messages.push({role: 'user', content: userPrompt});
+      messages.push({role: 'user', content: promptText});
 
       try {
         llmResponse = await context.generateRaw({
@@ -275,7 +292,7 @@ export async function generatePromptsForMessage(
         // Last resort: generateQuietPrompt (chat pipeline, no message insertion)
         if (typeof context.generateQuietPrompt === 'function') {
           try {
-            const combined = `SYSTEM:\n${systemPrompt}\n\nUSER:\n${userPrompt}`;
+            const combined = `SYSTEM:\n${systemPrompt}\n\nUSER:\n${promptText}`;
             llmResponse = await context.generateQuietPrompt({
               quietPrompt: combined,
             });
@@ -294,14 +311,56 @@ export async function generatePromptsForMessage(
 
     logger.debug('LLM response received');
     logger.trace('Raw LLM response:', llmResponse);
+    return llmResponse;
+  };
+
+  let llmResponse: string;
+  try {
+    llmResponse = await callPromptLlm(userPrompt);
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('LLM generation failed:', error);
-    return {
-      status: 'error',
-      suggestions: [],
-      errorType: 'llm-call-failed',
-      errorMessage: error instanceof Error ? error.message : String(error),
-    };
+
+    // If the raw call fails due to gateway/timeouts/payload issues, retry once with
+    // reduced context to shrink the request and improve compatibility with proxies.
+    if (
+      contextMessageCount > 0 &&
+      shouldRetryWithReducedContext(errorMessage)
+    ) {
+      logger.warn(
+        'Retrying prompt generation with reduced context (contextMessageCount=0) due to upstream error',
+        {error: errorMessage}
+      );
+
+      const reducedUserPrompt = buildUserPromptWithContext(
+        context,
+        messageText,
+        0
+      );
+
+      try {
+        llmResponse = await callPromptLlm(reducedUserPrompt);
+      } catch (secondError) {
+        const secondMessage =
+          secondError instanceof Error
+            ? secondError.message
+            : String(secondError);
+        logger.error('LLM generation failed (reduced context):', secondError);
+        return {
+          status: 'error',
+          suggestions: [],
+          errorType: 'llm-call-failed',
+          errorMessage: `${errorMessage} | reduced-context: ${secondMessage}`,
+        };
+      }
+    } else {
+      return {
+        status: 'error',
+        suggestions: [],
+        errorType: 'llm-call-failed',
+        errorMessage,
+      };
+    }
   }
 
   // Parse response

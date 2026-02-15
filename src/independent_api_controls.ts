@@ -32,6 +32,95 @@ const CONTROLS_CLASS = 'auto-illustrator-independent-controls';
 
 let initialized = false;
 let latestSettings: AutoIllustratorSettings | null = null;
+let statusTickerId: number | null = null;
+
+function clearStatusTicker(): void {
+  if (statusTickerId === null) return;
+  window.clearInterval(statusTickerId);
+  statusTickerId = null;
+}
+
+function getRenderedControlMessageIds(): number[] {
+  const ids = new Set<number>();
+  const containers = document.querySelectorAll(`.${CONTROLS_CLASS}`);
+  for (let i = 0; i < containers.length; i++) {
+    const container = containers[i];
+    const messageEl = (container as HTMLElement).closest(
+      '.mes'
+    ) as HTMLElement | null;
+    const idAttr = messageEl?.getAttribute('mesid');
+    const messageId = idAttr ? Number(idAttr) : NaN;
+    if (Number.isFinite(messageId)) {
+      ids.add(messageId);
+    }
+  }
+  return Array.from(ids.values());
+}
+
+function updateStatusTicker(settings: AutoIllustratorSettings): void {
+  const messageIds = getRenderedControlMessageIds();
+  if (
+    messageIds.length === 0 ||
+    !isIndependentApiMode(settings.promptGenerationMode)
+  ) {
+    clearStatusTicker();
+    return;
+  }
+
+  const timing = getGenerationTimingInfo();
+  const now = Date.now();
+
+  const shouldTick = messageIds.some(messageId => {
+    const retryState = getIndependentPromptRetryState(messageId);
+    if (
+      retryState?.status === 'scheduled' &&
+      typeof retryState.nextRetryAt === 'number' &&
+      retryState.nextRetryAt > now
+    ) {
+      return true;
+    }
+
+    const session = sessionManager.getSession(messageId);
+    if (!session) return false;
+
+    const status = session.processor.getStatus();
+    const stats = status.queueStats;
+    const queued = stats.QUEUED ?? 0;
+    const generating = stats.GENERATING ?? 0;
+    const pendingCount = queued + generating;
+
+    return pendingCount > 0 && timing.cooldownRemainingMs > 0;
+  });
+
+  if (shouldTick && statusTickerId === null) {
+    statusTickerId = window.setInterval(() => {
+      const freshContext = SillyTavern.getContext();
+      const currentSettings = latestSettings;
+      if (!freshContext || !currentSettings) {
+        clearStatusTicker();
+        return;
+      }
+
+      const ids = getRenderedControlMessageIds();
+      if (ids.length === 0) {
+        clearStatusTicker();
+        return;
+      }
+
+      for (const messageId of ids) {
+        renderControlsForMessage(messageId, freshContext, currentSettings);
+      }
+
+      // Stop ticking automatically when no longer needed
+      updateStatusTicker(currentSettings);
+    }, 1000);
+    return;
+  }
+
+  if (!shouldTick && statusTickerId !== null) {
+    clearStatusTicker();
+  }
+}
 
 function getMessageEl(messageId: number): HTMLElement | null {
   return document.querySelector(
@@ -378,6 +467,7 @@ export function renderIndependentApiControls(
 
   const context = SillyTavern.getContext();
   if (!context?.chat) {
+    clearStatusTicker();
     return;
   }
 
@@ -390,10 +480,13 @@ export function renderIndependentApiControls(
       const currentSettings = latestSettings;
       if (!freshContext || !currentSettings) return;
       renderControlsForMessage(messageId, freshContext, currentSettings);
+      updateStatusTicker(currentSettings);
     });
   }
 
   for (let messageId = 0; messageId < context.chat.length; messageId++) {
     renderControlsForMessage(messageId, context, settings);
   }
+
+  updateStatusTicker(settings);
 }
