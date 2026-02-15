@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **UI/UX Refresh (P0+P1)** - Comprehensive visual and interaction improvements
+  - Extract CSS custom properties system with 26+ design tokens for colors, spacing, timing, and z-index layers
+  - Add `prefers-reduced-motion` media query support for accessibility
+  - Add button click feedback (`:active` scale) across all interactive elements
+  - Unify dialog design with glassmorphism backdrop, entrance/exit animations, and button hierarchy (primary/cancel/destructive)
+  - Add progress widget micro-interactions: checkmark bounce, badge pulse, staggered thumbnail entrance animations
+  - Reorganize settings panel into 4 collapsible sub-drawer sections: Basic Settings, Generation Control, Prompt Configuration, Interface & Debug
+
 ### Fixed
 
 - **Independent API Prompt Generation (502/Bad Gateway)** - Reduce upstream 502s by sanitizing and bounding the context sent to the prompt-generation LLM call

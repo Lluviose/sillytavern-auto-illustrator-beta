@@ -37,6 +37,22 @@ import {collectAllImagesFromChat, normalizeImageUrl} from './image_utils';
 const logger = createLogger('ManualGen');
 
 /**
+ * Closes a dialog with exit animation before removing from DOM.
+ * Falls back to immediate removal after timeout.
+ */
+function closeDialogAnimated(backdrop: JQuery, dialog: JQuery): void {
+  dialog.addClass('dialog-exiting');
+  backdrop.addClass('backdrop-exiting');
+  const cleanup = () => {
+    backdrop.remove();
+    dialog.remove();
+  };
+  dialog.one('animationend', cleanup);
+  // Fallback: if animationend never fires (e.g. reduced motion), remove after 300ms
+  setTimeout(cleanup, 300);
+}
+
+/**
  * Opens the global image viewer starting from a specific image
  * Collects all AI-generated images from all messages in chat order
  * @param imageUrl - URL of the clicked image (absolute or relative)
@@ -179,8 +195,7 @@ async function showRegenerationDialog(
         const selectedMode = dialog
           .find('input[name="regen_mode"]:checked')
           .val() as ImageInsertionMode;
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve(selectedMode);
       });
 
@@ -188,8 +203,7 @@ async function showRegenerationDialog(
       .text(t('dialog.updatePrompt'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve('update-prompt');
       });
 
@@ -197,8 +211,7 @@ async function showRegenerationDialog(
       .text(t('dialog.delete'))
       .addClass('menu_button caution')
       .on('click', async () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         // Delete the image directly
         await deleteImage(imageUrl);
         resolve(null);
@@ -208,8 +221,7 @@ async function showRegenerationDialog(
       .text(t('dialog.viewAll'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         // Open global image viewer starting from this image
         openGlobalViewerFromImage(imageUrl);
         resolve(null);
@@ -219,8 +231,7 @@ async function showRegenerationDialog(
       .text(t('dialog.cancel'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve(null);
       });
 
@@ -233,8 +244,7 @@ async function showRegenerationDialog(
     dialog.append(buttons);
 
     backdrop.on('click', () => {
-      backdrop.remove();
-      dialog.remove();
+      closeDialogAnimated(backdrop, dialog);
       resolve(null);
     });
 
@@ -352,8 +362,7 @@ async function showPromptUpdateDialog(
           toastr.warning(t('toast.feedbackRequired'), t('extensionName'));
           return;
         }
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve(feedback.trim());
       });
 
@@ -361,8 +370,7 @@ async function showPromptUpdateDialog(
       .text(t('dialog.cancel'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve(null);
       });
 
@@ -374,8 +382,7 @@ async function showPromptUpdateDialog(
 
     // Close on backdrop click
     backdrop.on('click', () => {
-      backdrop.remove();
-      dialog.remove();
+      closeDialogAnimated(backdrop, dialog);
       resolve(null);
     });
 
@@ -452,8 +459,7 @@ async function showPostUpdateRegenerationDialog(
       .text(t('dialog.replaceRegen'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve('replace-image');
       });
 
@@ -461,8 +467,7 @@ async function showPostUpdateRegenerationDialog(
       .text(t('dialog.appendRegen'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve('append-after-image');
       });
 
@@ -470,8 +475,7 @@ async function showPostUpdateRegenerationDialog(
       .text(t('dialog.cancel'))
       .addClass('menu_button')
       .on('click', () => {
-        backdrop.remove();
-        dialog.remove();
+        closeDialogAnimated(backdrop, dialog);
         resolve(null);
       });
 
@@ -483,8 +487,7 @@ async function showPostUpdateRegenerationDialog(
 
     // Close on backdrop click
     backdrop.on('click', () => {
-      backdrop.remove();
-      dialog.remove();
+      closeDialogAnimated(backdrop, dialog);
       resolve(null);
     });
   });

@@ -281,7 +281,11 @@ async function runAttempt(
             `Image generation session already active for message ${messageId}; skipping duplicate start`
           );
         } else {
-          await startNonStreamingGenerationSession(messageId, context, settings);
+          await startNonStreamingGenerationSession(
+            messageId,
+            context,
+            settings
+          );
         }
       } catch (error) {
         logger.error(

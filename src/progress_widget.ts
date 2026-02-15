@@ -538,10 +538,24 @@ class ProgressWidgetView {
     }
 
     // Update badge
-    const badge = fab.querySelector('.ai-img-progress-fab-badge');
+    const badge = fab.querySelector(
+      '.ai-img-progress-fab-badge'
+    ) as HTMLElement | null;
     if (totalImages > 0) {
       if (badge) {
+        const oldText = badge.textContent;
         badge.textContent = String(totalImages);
+        // Pulse animation on count change
+        if (oldText !== String(totalImages)) {
+          badge.classList.remove('badge-pulse');
+          void badge.offsetWidth; // Force reflow to restart animation
+          badge.classList.add('badge-pulse');
+          badge.addEventListener(
+            'animationend',
+            () => badge.classList.remove('badge-pulse'),
+            {once: true}
+          );
+        }
       } else {
         const newBadge = document.createElement('span');
         newBadge.className = 'ai-img-progress-fab-badge';
@@ -894,6 +908,18 @@ class ProgressWidgetView {
         });
 
         thumbnailsContainer.appendChild(thumbnail);
+
+        // Staggered entrance animation for rebuilt thumbnails
+        thumbnail.classList.add('thumbnail-entering');
+        thumbnail.style.animationDelay = `${i * 50}ms`;
+        thumbnail.addEventListener(
+          'animationend',
+          () => {
+            thumbnail.classList.remove('thumbnail-entering');
+            thumbnail.style.animationDelay = '';
+          },
+          {once: true}
+        );
       }
     } else if (newCount > existingCount) {
       // Only add new thumbnails (don't recreate existing ones)
@@ -925,6 +951,19 @@ class ProgressWidgetView {
         });
 
         thumbnailsContainer.appendChild(thumbnail);
+
+        // Staggered entrance animation for new thumbnails
+        const staggerIndex = i - existingCount;
+        thumbnail.classList.add('thumbnail-entering');
+        thumbnail.style.animationDelay = `${staggerIndex * 50}ms`;
+        thumbnail.addEventListener(
+          'animationend',
+          () => {
+            thumbnail.classList.remove('thumbnail-entering');
+            thumbnail.style.animationDelay = '';
+          },
+          {once: true}
+        );
       }
 
       // Update indices on all thumbnails
@@ -1411,6 +1450,18 @@ class ProgressWidgetView {
       });
 
       thumbnailsContainer.appendChild(thumbnail);
+
+      // Staggered entrance animation
+      thumbnail.classList.add('thumbnail-entering');
+      thumbnail.style.animationDelay = `${i * 50}ms`;
+      thumbnail.addEventListener(
+        'animationend',
+        () => {
+          thumbnail.classList.remove('thumbnail-entering');
+          thumbnail.style.animationDelay = '';
+        },
+        {once: true}
+      );
     }
 
     gallery.appendChild(thumbnailsContainer);
