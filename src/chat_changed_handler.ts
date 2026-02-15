@@ -14,6 +14,8 @@
 import {createLogger} from './logger';
 import {loadMetadataFromContext} from './metadata';
 import {sessionManager} from './session_manager';
+import {cancelAllIndependentPromptRetries} from './independent_api_prompt_generation';
+import {cancelAllDelayedReconciliations} from './message_handler';
 import {executeChatChangeOperations} from './chat_change_operations';
 import {reloadGalleryForNewChat} from './gallery_widget';
 
@@ -29,6 +31,12 @@ function handleChatChanged(): void {
   logger.info('=== CHAT_CHANGED Event Fired ===');
 
   try {
+    // Step 0: Cancel any pending timeouts/retries from previous chat
+    // Message IDs are chat-local (0..N), so pending async work can corrupt the new chat.
+    logger.debug('0. Cancelling pending retries/timeouts');
+    cancelAllDelayedReconciliations();
+    cancelAllIndependentPromptRetries();
+
     // Step 1: Load fresh metadata FIRST (must happen before anything else)
     logger.debug('1. Loading fresh metadata from new chat');
     loadMetadataFromContext();

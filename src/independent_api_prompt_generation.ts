@@ -118,9 +118,13 @@ export function cancelIndependentPromptRetries(
 }
 
 export function cancelAllIndependentPromptRetries(): void {
-  for (const messageId of states.keys()) {
+  // messageId indices are chat-local; clear state entirely to avoid collisions
+  // when switching chats (new chats re-use messageId 0..N).
+  const messageIds = Array.from(states.keys());
+  for (const messageId of messageIds) {
     cancelIndependentPromptRetries(messageId, {silent: true});
   }
+  states.clear();
 }
 
 async function startNonStreamingGenerationSession(
