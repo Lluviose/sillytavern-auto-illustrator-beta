@@ -19,11 +19,6 @@ import {
   onIndependentPromptRetryStateChange,
 } from './independent_api_prompt_generation';
 import {t} from './i18n';
-import {getGenerationTimingInfo} from './image_generator';
-import {
-  estimateRemainingQueueMs,
-  formatDurationClock,
-} from './utils/time_utils';
 import {htmlEncode} from './utils/dom_utils';
 
 const logger = createLogger('IndependentApiControls');
@@ -67,29 +62,15 @@ function updateStatusTicker(settings: AutoIllustratorSettings): void {
     return;
   }
 
-  const timing = getGenerationTimingInfo();
   const now = Date.now();
 
   const shouldTick = messageIds.some(messageId => {
     const retryState = getIndependentPromptRetryState(messageId);
-    if (
+    return (
       retryState?.status === 'scheduled' &&
       typeof retryState.nextRetryAt === 'number' &&
       retryState.nextRetryAt > now
-    ) {
-      return true;
-    }
-
-    const session = sessionManager.getSession(messageId);
-    if (!session) return false;
-
-    const status = session.processor.getStatus();
-    const stats = status.queueStats;
-    const queued = stats.QUEUED ?? 0;
-    const generating = stats.GENERATING ?? 0;
-    const pendingCount = queued + generating;
-
-    return pendingCount > 0 && timing.cooldownRemainingMs > 0;
+    );
   });
 
   if (shouldTick && statusTickerId === null) {
@@ -290,13 +271,8 @@ function renderControlsForMessage(
     (hasFailedImages || !hasAnyIllustratorImages);
 
   const shouldShowPromptControls = !!retryState && !promptTagsPresent;
-  const shouldShowSessionStatus = sessionActive;
 
-  if (
-    !shouldShowPromptControls &&
-    !shouldShowRetryImages &&
-    !shouldShowSessionStatus
-  ) {
+  if (!shouldShowPromptControls && !shouldShowRetryImages) {
     removeContainer(messageEl);
     return;
   }
@@ -304,57 +280,6 @@ function renderControlsForMessage(
   const container = ensureContainer(messageEl);
 
   const parts: string[] = [];
-
-  if (shouldShowSessionStatus && session) {
-    const status = session.processor.getStatus();
-    const stats = status.queueStats;
-    const queued = stats.QUEUED ?? 0;
-    const generating = stats.GENERATING ?? 0;
-    const completed = stats.COMPLETED ?? 0;
-    const failed = stats.FAILED ?? 0;
-
-    parts.push(
-      `<span class="auto-illustrator-independent-status">${htmlEncode(
-        t('controls.imageQueueStatus', {
-          queued,
-          generating,
-          active: status.activeGenerations,
-          max: status.maxConcurrent,
-          completed,
-          failed,
-        })
-      )}</span>`
-    );
-
-    const pendingCount = queued + generating;
-    const timing = getGenerationTimingInfo();
-    if (pendingCount > 0 && timing.cooldownRemainingMs > 0) {
-      const etaMs = estimateRemainingQueueMs({
-        pendingCount,
-        cooldownRemainingMs: timing.cooldownRemainingMs,
-        averageGenerationDurationMs: timing.averageGenerationDurationMs,
-        minGenerationIntervalMs: timing.minGenerationIntervalMs,
-        maxConcurrent: timing.maxConcurrent,
-      });
-
-      const cooldownText = t('progress.cooldownRemaining', {
-        time: formatDurationClock(timing.cooldownRemainingMs),
-      });
-      const etaText =
-        etaMs === null
-          ? t('progress.queueEtaUnknown')
-          : t('progress.queueEta', {time: formatDurationClock(etaMs)});
-
-      const detailText = etaText
-        ? `${cooldownText} • ${etaText}`
-        : cooldownText;
-      parts.push(
-        `<span class="auto-illustrator-independent-status auto-illustrator-independent-status-details">${htmlEncode(
-          detailText
-        )}</span>`
-      );
-    }
-  }
 
   if (shouldShowPromptControls && retryState) {
     if (retryState.status === 'scheduled' && retryState.nextRetryAt) {

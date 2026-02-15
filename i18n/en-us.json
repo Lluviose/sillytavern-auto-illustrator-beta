@@ -130,8 +130,6 @@
   "controls.promptRetryRunning": "Generating prompts...",
   "controls.promptRetryFailed": "Prompt generation failed",
   "controls.promptRetryCancelled": "Auto-retry cancelled",
-  "controls.imageQueueStatus": "Image queue: {queued} queued, {generating} generating ({active}/{max}), {completed} ok, {failed} failed",
-  "controls.lastError": "Last error: {type} - {message}",
   "progress.succeeded": "ok",
   "progress.failed": "failed",
   "progress.pending": "pending",

@@ -2567,8 +2567,3 @@ img[data-failed-placeholder='true']:hover {
   opacity: 0.8;
 }
 
-.auto-illustrator-independent-status-details {
-  font-size: 0.8em;
-  opacity: 0.7;
-  flex-basis: 100%;
-}

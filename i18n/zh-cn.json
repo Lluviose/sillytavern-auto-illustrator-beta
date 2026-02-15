@@ -221,7 +221,5 @@
   "controls.promptRetryScheduled": "提示词将在{seconds}s后重试（{attempt}/{total}）",
   "controls.promptRetryRunning": "正在生成提示词...",
   "controls.promptRetryFailed": "提示词生成失败",
-  "controls.promptRetryCancelled": "已取消自动重试",
-  "controls.imageQueueStatus": "生图队列：{queued} 排队，{generating} 生成中（{active}/{max}），{completed} 成功，{failed} 失败",
-  "controls.lastError": "上次错误：{type} - {message}"
+  "controls.promptRetryCancelled": "已取消自动重试"
 }

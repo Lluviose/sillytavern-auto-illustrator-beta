@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add progress widget micro-interactions: checkmark bounce, badge pulse, staggered thumbnail entrance animations
   - Reorganize settings panel into 4 collapsible sub-drawer sections: Basic Settings, Generation Control, Prompt Configuration, Interface & Debug
 
+### Removed
+
+- **Inline queue status display** - Remove per-message queue/cooldown/ETA text from chat messages (redundant with floating progress widget)
+
 ### Fixed
 
 - **Independent API Prompt Generation (502/Bad Gateway)** - Reduce upstream 502s by sanitizing and bounding the context sent to the prompt-generation LLM call
