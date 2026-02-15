@@ -165,7 +165,8 @@ async function tryGenerateAndInsertPromptsOnce(
   const generation = await generatePromptsForMessage(
     currentText,
     context,
-    settings
+    settings,
+    {messageId}
   );
 
   if (state.abortController.signal.aborted) {

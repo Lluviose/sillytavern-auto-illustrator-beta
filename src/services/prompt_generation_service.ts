@@ -63,12 +63,21 @@ function shouldRetryWithReducedContext(errorMessage: string): boolean {
 function buildUserPromptWithContext(
   context: SillyTavernContext,
   currentMessageText: string,
-  contextMessageCount: number
+  contextMessageCount: number,
+  currentMessageIndex?: number
 ): string {
   // Get recent chat history (last N messages, excluding current)
   const chat = context.chat || [];
-  const startIndex = Math.max(0, chat.length - contextMessageCount - 1);
-  const recentMessages = chat.slice(startIndex, -1); // Last N messages before current
+  const safeCurrentIndex =
+    typeof currentMessageIndex === 'number' &&
+    Number.isFinite(currentMessageIndex) &&
+    currentMessageIndex >= 0 &&
+    currentMessageIndex < chat.length
+      ? currentMessageIndex
+      : chat.length - 1;
+
+  const startIndex = Math.max(0, safeCurrentIndex - contextMessageCount);
+  const recentMessages = chat.slice(startIndex, safeCurrentIndex); // Last N messages before current
 
   let contextText = '';
   if (recentMessages.length > 0 && contextMessageCount > 0) {
@@ -208,7 +217,8 @@ function parsePromptSuggestions(llmResponse: string): PromptSuggestion[] {
 export async function generatePromptsForMessage(
   messageText: string,
   context: SillyTavernContext,
-  settings: AutoIllustratorSettings
+  settings: AutoIllustratorSettings,
+  options?: {messageId?: number}
 ): Promise<PromptGenerationResult> {
   logger.info('Generating image prompts using separate LLM call');
   logger.debug(`Message length: ${messageText.length} characters`);
@@ -246,7 +256,8 @@ export async function generatePromptsForMessage(
   const userPrompt = buildUserPromptWithContext(
     context,
     messageText,
-    contextMessageCount
+    contextMessageCount,
+    options?.messageId
   );
 
   logger.debug('Calling LLM for prompt generation (using generateRaw)');
@@ -335,7 +346,8 @@ export async function generatePromptsForMessage(
       const reducedUserPrompt = buildUserPromptWithContext(
         context,
         messageText,
-        0
+        0,
+        options?.messageId
       );
 
       try {
