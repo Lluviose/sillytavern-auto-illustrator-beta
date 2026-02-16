@@ -666,8 +666,12 @@ export class ImageModalViewer {
       // This ensures CSS constraints are correct when image loads
       this.applyImageTransform();
 
+      // Crossfade: dim current image while loading new one
+      this.img.classList.add('loading');
+
       // Wait for image to load before resetting zoom to ensure correct dimensions
       this.img.onload = () => {
+        this.img?.classList.remove('loading');
         this.resetZoom(); // Reset zoom after image loads with preserved rotation
       };
       this.img.src = currentImage.imageUrl;
@@ -1350,16 +1354,23 @@ export class ImageModalViewer {
       clearTimeout(this.zoomIndicatorTimeout);
     }
 
-    // Remove modal from DOM
-    if (this.backdrop) {
-      this.backdrop.remove();
-    }
-
     // Restore background scroll
     document.body.classList.remove('ai-img-modal-open');
 
     // Call close callback
     this.onClose?.();
+
+    // Animate modal exit then remove from DOM
+    if (this.backdrop) {
+      const backdropEl = this.backdrop;
+      backdropEl.classList.add('modal-exiting');
+      const cleanup = () => {
+        backdropEl.remove();
+      };
+      backdropEl.addEventListener('animationend', cleanup, {once: true});
+      // Fallback if animationend never fires (e.g. reduced motion)
+      setTimeout(cleanup, 300);
+    }
 
     logger.debug('Modal viewer closed');
   }

@@ -411,7 +411,17 @@ export class GalleryWidgetView {
       return;
     }
 
+    // Play entrance animation when transitioning from hidden to visible
+    const wasHidden = widget.style.display === 'none';
     widget.style.display = 'flex';
+    if (wasHidden) {
+      widget.classList.add('gallery-entering');
+      widget.addEventListener(
+        'animationend',
+        () => widget.classList.remove('gallery-entering'),
+        {once: true}
+      );
+    }
 
     // Check if we need a full rebuild (minimize state changed or first render)
     const currentMinimizedState = widget.classList.contains('minimized');

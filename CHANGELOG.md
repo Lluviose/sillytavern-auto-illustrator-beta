@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Unify dialog design with glassmorphism backdrop, entrance/exit animations, and button hierarchy (primary/cancel/destructive)
   - Add progress widget micro-interactions: checkmark bounce, badge pulse, staggered thumbnail entrance animations
   - Reorganize settings panel into 4 collapsible sub-drawer sections: Basic Settings, Generation Control, Prompt Configuration, Interface & Debug
+- **UI/UX Round 2 — Animation & Polish**
+  - Fix `spinner-rotate` → `spin` keyframe reference bug in progress FAB
+  - Add missing `.ai-img-progress-message-close` CSS rules
+  - Add `:focus-visible` keyboard focus indicators for all interactive elements (accessibility)
+  - Add dialog button hover transitions and radio option selected state styling
+  - Add keyboard shortcuts to all dialogs: Escape to cancel, Enter to confirm (where unambiguous)
+  - Add modal exit fade-out animation on close
+  - Add modal image navigation crossfade (dim/blur during load)
+  - Add gallery widget entrance slide-in animation
+  - Add streaming preview widget exit slide-out animation
+  - Replace inline transition/opacity styles with CSS utility classes in streaming preview
+  - Expand `prefers-reduced-motion` coverage for all new animations
+  - Tokenize remaining hardcoded colors into CSS custom properties (`--ai-info-rgb`, `--ai-danger-rgb`)
 
 ### Removed
 

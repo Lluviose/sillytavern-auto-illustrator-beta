@@ -53,6 +53,48 @@ function closeDialogAnimated(backdrop: JQuery, dialog: JQuery): void {
 }
 
 /**
+ * Attaches keyboard shortcuts to a dialog.
+ * - Escape: cancel / close
+ * - Enter: confirm (optional, skipped for text inputs)
+ * Uses capture phase to intercept before SillyTavern handlers.
+ * @returns cleanup function to remove the listener
+ */
+function attachDialogKeyboard(
+  onConfirm: (() => void) | null,
+  onCancel: () => void
+): () => void {
+  const handler = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    // Don't intercept typing in text fields
+    if (
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'INPUT' ||
+      target.isContentEditable
+    ) {
+      // Still allow Escape from text fields
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+    if (e.key === 'Enter' && onConfirm) {
+      e.preventDefault();
+      e.stopPropagation();
+      onConfirm();
+    }
+  };
+  document.addEventListener('keydown', handler, true);
+  return () => document.removeEventListener('keydown', handler, true);
+}
+
+/**
  * Opens the global image viewer starting from a specific image
  * Collects all AI-generated images from all messages in chat order
  * @param imageUrl - URL of the clicked image (absolute or relative)
@@ -188,6 +230,14 @@ async function showRegenerationDialog(
 
     const buttons = $('<div>').addClass('auto-illustrator-dialog-buttons');
 
+    const closeAndResolve = (
+      result: ImageInsertionMode | 'update-prompt' | null
+    ) => {
+      removeKeyboard();
+      closeDialogAnimated(backdrop, dialog);
+      resolve(result);
+    };
+
     const generateBtn = $('<button>')
       .text(t('dialog.generate'))
       .addClass('menu_button')
@@ -195,24 +245,22 @@ async function showRegenerationDialog(
         const selectedMode = dialog
           .find('input[name="regen_mode"]:checked')
           .val() as ImageInsertionMode;
-        closeDialogAnimated(backdrop, dialog);
-        resolve(selectedMode);
+        closeAndResolve(selectedMode);
       });
 
     const updateBtn = $('<button>')
       .text(t('dialog.updatePrompt'))
       .addClass('menu_button')
       .on('click', () => {
-        closeDialogAnimated(backdrop, dialog);
-        resolve('update-prompt');
+        closeAndResolve('update-prompt');
       });
 
     const deleteBtn = $('<button>')
       .text(t('dialog.delete'))
       .addClass('menu_button caution')
       .on('click', async () => {
+        removeKeyboard();
         closeDialogAnimated(backdrop, dialog);
-        // Delete the image directly
         await deleteImage(imageUrl);
         resolve(null);
       });
@@ -221,8 +269,8 @@ async function showRegenerationDialog(
       .text(t('dialog.viewAll'))
       .addClass('menu_button')
       .on('click', () => {
+        removeKeyboard();
         closeDialogAnimated(backdrop, dialog);
-        // Open global image viewer starting from this image
         openGlobalViewerFromImage(imageUrl);
         resolve(null);
       });
@@ -231,8 +279,7 @@ async function showRegenerationDialog(
       .text(t('dialog.cancel'))
       .addClass('menu_button')
       .on('click', () => {
-        closeDialogAnimated(backdrop, dialog);
-        resolve(null);
+        closeAndResolve(null);
       });
 
     buttons
@@ -244,9 +291,21 @@ async function showRegenerationDialog(
     dialog.append(buttons);
 
     backdrop.on('click', () => {
-      closeDialogAnimated(backdrop, dialog);
-      resolve(null);
+      closeAndResolve(null);
     });
+
+    // Keyboard shortcuts: Enter→generate, Escape→cancel
+    const removeKeyboard = attachDialogKeyboard(
+      () => {
+        const selectedMode = dialog
+          .find('input[name="regen_mode"]:checked')
+          .val() as ImageInsertionMode;
+        closeAndResolve(selectedMode);
+      },
+      () => {
+        closeAndResolve(null);
+      }
+    );
 
     $('body').append(backdrop).append(dialog);
   });
@@ -353,38 +412,48 @@ async function showPromptUpdateDialog(
 
     const buttons = $('<div>').addClass('auto-illustrator-dialog-buttons');
 
+    const closeAndResolve = (result: string | null) => {
+      removeKeyboard();
+      closeDialogAnimated(backdrop, dialog);
+      resolve(result);
+    };
+
+    const tryUpdate = () => {
+      const feedback = feedbackTextarea.val() as string;
+      if (!feedback || feedback.trim() === '') {
+        toastr.warning(t('toast.feedbackRequired'), t('extensionName'));
+        return;
+      }
+      closeAndResolve(feedback.trim());
+    };
+
     const updateButton = $('<button>')
       .text(t('dialog.updateWithAI'))
       .addClass('menu_button')
-      .on('click', () => {
-        const feedback = feedbackTextarea.val() as string;
-        if (!feedback || feedback.trim() === '') {
-          toastr.warning(t('toast.feedbackRequired'), t('extensionName'));
-          return;
-        }
-        closeDialogAnimated(backdrop, dialog);
-        resolve(feedback.trim());
-      });
+      .on('click', tryUpdate);
 
     const cancelButton = $('<button>')
       .text(t('dialog.cancel'))
       .addClass('menu_button')
       .on('click', () => {
-        closeDialogAnimated(backdrop, dialog);
-        resolve(null);
+        closeAndResolve(null);
       });
 
     buttons.append(updateButton).append(cancelButton);
     dialog.append(buttons);
 
-    // Append backdrop and dialog to body
-    $('body').append(backdrop).append(dialog);
-
     // Close on backdrop click
     backdrop.on('click', () => {
-      closeDialogAnimated(backdrop, dialog);
-      resolve(null);
+      closeAndResolve(null);
     });
+
+    // Keyboard shortcuts: Escape→cancel (Enter blocked — textarea is primary input)
+    const removeKeyboard = attachDialogKeyboard(null, () => {
+      closeAndResolve(null);
+    });
+
+    // Append backdrop and dialog to body
+    $('body').append(backdrop).append(dialog);
 
     // Focus on textarea
     feedbackTextarea.focus();
@@ -455,41 +524,48 @@ async function showPostUpdateRegenerationDialog(
 
     const buttons = $('<div>').addClass('auto-illustrator-dialog-buttons');
 
+    const closeAndResolve = (result: ImageInsertionMode | null) => {
+      removeKeyboard();
+      closeDialogAnimated(backdrop, dialog);
+      resolve(result);
+    };
+
     const replaceBtn = $('<button>')
       .text(t('dialog.replaceRegen'))
       .addClass('menu_button')
       .on('click', () => {
-        closeDialogAnimated(backdrop, dialog);
-        resolve('replace-image');
+        closeAndResolve('replace-image');
       });
 
     const appendBtn = $('<button>')
       .text(t('dialog.appendRegen'))
       .addClass('menu_button')
       .on('click', () => {
-        closeDialogAnimated(backdrop, dialog);
-        resolve('append-after-image');
+        closeAndResolve('append-after-image');
       });
 
     const cancelBtn = $('<button>')
       .text(t('dialog.cancel'))
       .addClass('menu_button')
       .on('click', () => {
-        closeDialogAnimated(backdrop, dialog);
-        resolve(null);
+        closeAndResolve(null);
       });
 
     buttons.append(replaceBtn).append(appendBtn).append(cancelBtn);
     dialog.append(buttons);
 
-    // Append backdrop and dialog to body
-    $('body').append(backdrop).append(dialog);
-
     // Close on backdrop click
     backdrop.on('click', () => {
-      closeDialogAnimated(backdrop, dialog);
-      resolve(null);
+      closeAndResolve(null);
     });
+
+    // Keyboard shortcuts: Escape→cancel (no Enter — 3 choices require explicit selection)
+    const removeKeyboard = attachDialogKeyboard(null, () => {
+      closeAndResolve(null);
+    });
+
+    // Append backdrop and dialog to body
+    $('body').append(backdrop).append(dialog);
   });
 }
 

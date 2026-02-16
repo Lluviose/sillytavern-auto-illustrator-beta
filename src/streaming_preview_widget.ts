@@ -858,8 +858,7 @@ export class StreamingPreviewWidget {
         '.ai-streaming-preview-image-placeholder, .ai-streaming-preview-image-failed'
       );
       if (placeholder) {
-        (placeholder as HTMLElement).style.opacity = '0';
-        (placeholder as HTMLElement).style.transition = 'opacity 0.3s ease';
+        (placeholder as HTMLElement).classList.add('ai-streaming-fade-out');
 
         // After fade out, replace with image
         setTimeout(() => {
@@ -868,9 +867,8 @@ export class StreamingPreviewWidget {
           const img = document.createElement('img');
           img.src = segment.imageUrl!;
           img.alt = segment.prompt;
-          img.className = 'ai-streaming-preview-image';
+          img.className = 'ai-streaming-preview-image ai-streaming-fade-in';
           img.title = t('streamingPreview.clickToEnlarge');
-          img.style.opacity = '0';
 
           // Click to open modal
           img.addEventListener('click', () => {
@@ -881,8 +879,7 @@ export class StreamingPreviewWidget {
 
           // Fade in image
           requestAnimationFrame(() => {
-            img.style.transition = 'opacity 0.3s ease';
-            img.style.opacity = '1';
+            img.classList.add('visible');
           });
         }, 300);
       }
@@ -1047,8 +1044,15 @@ export class StreamingPreviewWidget {
    */
   private removeFromDOM(): void {
     if (this.widget?.parentElement) {
-      this.widget.parentElement.removeChild(this.widget);
-      logger.debug('Streaming preview widget removed from DOM');
+      const w = this.widget;
+      w.classList.add('streaming-exiting');
+      const cleanup = () => {
+        w.parentElement?.removeChild(w);
+        logger.debug('Streaming preview widget removed from DOM');
+      };
+      w.addEventListener('animationend', cleanup, {once: true});
+      // Fallback if animationend never fires (e.g. reduced motion)
+      setTimeout(cleanup, 300);
     }
     this.widget = null;
   }
