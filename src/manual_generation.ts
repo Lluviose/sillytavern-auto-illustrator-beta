@@ -353,12 +353,20 @@ async function showPromptUpdateDialog(
   logger.info('URLs in registry:', registryUrls);
 
   // Check if any URLs are similar (might be encoding issue)
-  const decodedLookupUrl = decodeURIComponent(normalizedUrl);
+  const safeDecode = (value: string): string => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+
+  const decodedLookupUrl = safeDecode(normalizedUrl);
   logger.info(`Decoded lookup URL: ${decodedLookupUrl}`);
 
   // Try to find similar URLs
   const similarUrls = registryUrls.filter(url => {
-    const decodedRegistryUrl = decodeURIComponent(url);
+    const decodedRegistryUrl = safeDecode(url);
     return decodedRegistryUrl === decodedLookupUrl || url === normalizedUrl;
   });
   logger.info('Similar URLs found:', similarUrls);

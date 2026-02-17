@@ -40,6 +40,16 @@ describe('normalizeImageUrl', () => {
         'http://example.com/user/images/%E5%B0%8F%E8%AF%B4%E5%AE%B6/test.png';
       expect(normalizeImageUrl(url)).toBe('/user/images/小说家/test.png');
     });
+
+    it('should not throw on invalid URL encoding in pathname', () => {
+      const url = 'http://example.com/user/images/%ZZ/test.png';
+      expect(normalizeImageUrl(url)).toBe('/user/images/%ZZ/test.png');
+    });
+
+    it('should strip query and hash from absolute URL', () => {
+      const url = 'http://example.com/user/images/test.png?ts=123#section';
+      expect(normalizeImageUrl(url)).toBe('/user/images/test.png');
+    });
   });
 
   describe('relative paths', () => {
@@ -51,6 +61,16 @@ describe('normalizeImageUrl', () => {
     it('should decode URL-encoded characters in relative path', () => {
       const path = '/user/images/%E5%B0%8F%E8%AF%B4%E5%AE%B6/test.png';
       expect(normalizeImageUrl(path)).toBe('/user/images/小说家/test.png');
+    });
+
+    it('should not throw on invalid URL encoding in relative path', () => {
+      const path = '/user/images/%ZZ/test.png';
+      expect(normalizeImageUrl(path)).toBe('/user/images/%ZZ/test.png');
+    });
+
+    it('should strip query and hash from relative path', () => {
+      const path = '/user/images/test.png?ts=123#section';
+      expect(normalizeImageUrl(path)).toBe('/user/images/test.png');
     });
   });
 });

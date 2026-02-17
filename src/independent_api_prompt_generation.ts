@@ -322,7 +322,9 @@ async function runAttempt(
     return;
   }
 
-  const delayMs = RETRY_DELAYS_MS[state.retryCount] ?? RETRY_DELAYS_MS.at(-1)!;
+  const delayMs =
+    RETRY_DELAYS_MS[state.retryCount] ??
+    RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
   const attempt = state.retryCount + 1;
   const total = state.maxRetries;
 

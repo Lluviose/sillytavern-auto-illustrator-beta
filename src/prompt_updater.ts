@@ -12,8 +12,10 @@ import {
   replacePromptTextInMessage,
   type PromptNode,
 } from './prompt_manager';
+import {normalizeImageUrl} from './image_utils';
 import {getMetadata} from './metadata';
 import {DEFAULT_PROMPT_DETECTION_PATTERNS} from './constants';
+import {htmlEncode} from './utils/dom_utils';
 import {renderMessageUpdate} from './utils/message_renderer';
 
 // Re-export PromptNode type for consumers
@@ -77,9 +79,10 @@ export async function generateUpdatedPrompt(
   const metadata = getMetadata();
 
   // Find parent prompt for this image
-  const parent = getPromptForImage(imageUrl, metadata);
+  const normalizedUrl = normalizeImageUrl(imageUrl);
+  const parent = getPromptForImage(normalizedUrl, metadata);
   if (!parent) {
-    logger.error('No prompt found for image:', imageUrl);
+    logger.error('No prompt found for image:', normalizedUrl);
     return null;
   }
 
@@ -165,7 +168,12 @@ export async function applyPromptUpdate(
   const metadata = getMetadata();
 
   // Find message containing this image
-  const message = context.chat?.find(msg => msg.mes.includes(imageUrl));
+  const normalizedUrl = normalizeImageUrl(imageUrl);
+  const encodedUrl = htmlEncode(normalizedUrl);
+  const message = context.chat?.find(msg => {
+    const text = msg.mes || '';
+    return text.includes(normalizedUrl) || text.includes(encodedUrl);
+  });
 
   if (!message) {
     logger.error('Message containing image not found');
@@ -183,7 +191,7 @@ export async function applyPromptUpdate(
     settings.promptDetectionPatterns || DEFAULT_PROMPT_DETECTION_PATTERNS;
   const updatedText = replacePromptTextInMessage(
     parentPromptId, // Replace at parent's position
-    message.mes,
+    message.mes || '',
     childNode.text, // Use child's text
     patterns,
     metadata

@@ -18,6 +18,23 @@ import type {AutoIllustratorChatMetadata} from './types';
 
 const logger = createLogger('Metadata');
 
+function getSillyTavernContextSafe(): SillyTavernContext | null {
+  const st = (globalThis as any).SillyTavern as
+    | {getContext?: () => SillyTavernContext | null}
+    | undefined;
+
+  if (!st || typeof st.getContext !== 'function') {
+    return null;
+  }
+
+  try {
+    return st.getContext();
+  } catch (error) {
+    logger.debug('Failed to get SillyTavern context:', error);
+    return null;
+  }
+}
+
 /**
  * Cached reference to current chat's metadata
  * Set by loadMetadataFromContext() (called on init + CHAT_CHANGED)
@@ -52,9 +69,15 @@ export function getMetadata(): AutoIllustratorChatMetadata {
 export function loadMetadataFromContext(): void {
   logger.trace('Loading metadata from context (CHAT_CHANGED event)');
 
-  const context = SillyTavern.getContext();
+  const context = getSillyTavernContextSafe();
   if (!context) {
-    logger.error('Cannot load metadata: context not available');
+    const hasSillyTavern =
+      typeof (globalThis as any).SillyTavern !== 'undefined';
+    if (hasSillyTavern) {
+      logger.error('Cannot load metadata: context not available');
+    } else {
+      logger.debug('Cannot load metadata: SillyTavern global not available');
+    }
     currentMetadata = null;
     return;
   }
@@ -92,6 +115,13 @@ export function loadMetadataFromContext(): void {
  */
 (function initializeMetadata() {
   // Load metadata for current chat on extension startup
+  const st = (globalThis as any).SillyTavern as
+    | {getContext?: () => SillyTavernContext | null}
+    | undefined;
+  if (!st || typeof st.getContext !== 'function') {
+    return;
+  }
+
   try {
     loadMetadataFromContext();
     logger.debug('Initial metadata loaded on module initialization');
@@ -108,9 +138,15 @@ export function loadMetadataFromContext(): void {
  * The save is delayed by 1 second to batch multiple rapid changes.
  */
 export async function saveMetadata(): Promise<void> {
-  const context = SillyTavern.getContext();
+  const context = getSillyTavernContextSafe();
   if (!context) {
-    logger.warn('Cannot save metadata: context not available');
+    const hasSillyTavern =
+      typeof (globalThis as any).SillyTavern !== 'undefined';
+    if (hasSillyTavern) {
+      logger.warn('Cannot save metadata: context not available');
+    } else {
+      logger.debug('Cannot save metadata: SillyTavern global not available');
+    }
     return;
   }
 

@@ -489,23 +489,28 @@ export async function unlinkImageFromPrompt(
   metadata: AutoIllustratorChatMetadata
 ): Promise<boolean> {
   const registry = getRegistry(metadata);
-  const promptId = registry.imageToPromptId[imageUrl];
+  const normalizedUrl = normalizeImageUrl(imageUrl);
+  const promptId = registry.imageToPromptId[normalizedUrl];
 
   if (!promptId) {
-    logger.debug(`Image not linked to any prompt: ${imageUrl}`);
+    logger.debug(
+      `Image not linked to any prompt: ${normalizedUrl} (original: ${imageUrl})`
+    );
     return false;
   }
 
   const node = registry.nodes[promptId];
   if (node) {
     // Remove from node's generated images
-    node.generatedImages = node.generatedImages.filter(url => url !== imageUrl);
+    node.generatedImages = node.generatedImages.filter(
+      url => url !== normalizedUrl
+    );
   }
 
   // Remove from index
-  delete registry.imageToPromptId[imageUrl];
+  delete registry.imageToPromptId[normalizedUrl];
 
-  logger.debug(`Unlinked image from prompt ${promptId}: ${imageUrl}`);
+  logger.debug(`Unlinked image from prompt ${promptId}: ${normalizedUrl}`);
 
   // Auto-save
   await saveMetadata();
@@ -533,18 +538,19 @@ export function getPromptForImage(
   metadata: AutoIllustratorChatMetadata
 ): PromptNode | null {
   const registry = getRegistry(metadata);
+  const normalizedUrl = normalizeImageUrl(imageUrl);
 
   // DEBUG: Log lookup attempt
   logger.info('=== DEBUG: getPromptForImage ===');
-  logger.info(`Looking up URL: ${imageUrl}`);
+  logger.info(`Looking up URL: ${normalizedUrl} (original: ${imageUrl})`);
   logger.info(
     `Registry has ${Object.keys(registry.imageToPromptId).length} image mappings`
   );
 
-  const promptId = registry.imageToPromptId[imageUrl];
+  const promptId = registry.imageToPromptId[normalizedUrl];
 
   if (!promptId) {
-    logger.info(`No promptId found for URL: ${imageUrl}`);
+    logger.info(`No promptId found for URL: ${normalizedUrl}`);
     return null;
   }
 

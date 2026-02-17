@@ -22,6 +22,12 @@ import type {GalleryWidgetState} from './types';
 
 const logger = createLogger('GalleryWidget');
 
+function htmlToPlainText(html: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return template.content.textContent || '';
+}
+
 /**
  * Represents a group of images from a single message
  */
@@ -275,9 +281,7 @@ export class GalleryWidgetView {
 
     if (images.length > 0) {
       // Create message preview (first 100 chars, strip HTML)
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = messageText;
-      const plainText = tempDiv.textContent || tempDiv.innerText || '';
+      const plainText = htmlToPlainText(messageText);
       const messagePreview =
         plainText.substring(0, 100) + (plainText.length > 100 ? '...' : '');
 
@@ -342,9 +346,7 @@ export class GalleryWidgetView {
 
       if (images.length > 0) {
         // Create message preview (first 100 chars, strip HTML)
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = messageText;
-        const plainText = tempDiv.textContent || tempDiv.innerText || '';
+        const plainText = htmlToPlainText(messageText);
         const messagePreview =
           plainText.substring(0, 100) + (plainText.length > 100 ? '...' : '');
 
